@@ -30,11 +30,28 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EconergyApiError(Exception):
-    """An API request failed or returned an unexpected response."""
+    """An API request failed or returned a structured Econergy error."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.details = dict(details) if isinstance(details, dict) else {}
 
 
 class EconergyAuthError(EconergyApiError):
     """The Econergy OAuth access token is invalid or expired."""
+
+
+class EconergyHomeSuspendedError(EconergyApiError):
+    """The selected home can still be read, but write operations are suspended."""
 
 
 class EconergyCommandError(EconergyApiError):
@@ -47,11 +64,24 @@ class EconergyCommandError(EconergyApiError):
 
 
 class EconergyRateLimitError(EconergyApiError):
-    """The API rate-limited a request and supplied a Retry-After delay."""
+    """The API rate-limited a request and may identify an existing command."""
 
-    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after: float | None = None,
+        command_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            status_code=429,
+            code="RATE_LIMITED",
+            details=details,
+        )
         self.retry_after = retry_after
+        self.command_id = command_id
 
 
 class EconergyApi:
@@ -115,10 +145,21 @@ class EconergyApi:
                 except (ValueError, ClientError):
                     body = None
 
+                error = body.get("error", {}) if isinstance(body, dict) else {}
+                if not isinstance(error, dict):
+                    error = {}
+                error_code = str(error.get("code") or f"HTTP_{response.status}")
+                error_message = str(error.get("message") or "La requête a échoué")
+                details = error.get("details")
+                if not isinstance(details, dict):
+                    details = {}
+
                 if response.status == 401:
-                    error = body.get("error", {}) if isinstance(body, dict) else {}
                     raise EconergyAuthError(
-                        str(error.get("message") or "Jeton Econergy invalide ou expiré")
+                        error_message or "Jeton Econergy invalide ou expiré",
+                        status_code=response.status,
+                        code=error_code,
+                        details=details,
                     )
 
                 if response.status == 429:
@@ -138,19 +179,41 @@ class EconergyApi:
                                 )
                             except (TypeError, ValueError, OverflowError):
                                 retry_after = None
-                    error = body.get("error", {}) if isinstance(body, dict) else {}
-                    message = str(error.get("message") or "Limite de requêtes atteinte")
+                    if retry_after is None:
+                        retry_after_value = details.get("retryAfterS")
+                        if (
+                            isinstance(retry_after_value, (int, float))
+                            and not isinstance(retry_after_value, bool)
+                        ):
+                            retry_after = max(0.0, float(retry_after_value))
+                    command_id = details.get("commandId")
                     raise EconergyRateLimitError(
-                        f"HTTP 429 : {message}", retry_after=retry_after
+                        f"HTTP 429 ({error_code}) : {error_message}",
+                        retry_after=retry_after,
+                        command_id=str(command_id) if command_id else None,
+                        details=details,
                     )
 
                 if response.status >= 400:
-                    error = body.get("error", {}) if isinstance(body, dict) else {}
-                    code = str(error.get("code") or f"HTTP_{response.status}")
-                    message = str(error.get("message") or "La requête a échoué")
+                    if error_code == "HOME_SUSPENDED":
+                        raise EconergyHomeSuspendedError(
+                            "Le pilotage de ce domicile est suspendu par Econergy "
+                            "(HOME_SUSPENDED). La lecture reste autorisée, mais les "
+                            "commandes et modifications sont refusées. "
+                            f"Détail API : {error_message}",
+                            status_code=response.status,
+                            code=error_code,
+                            details=details,
+                        )
+                    message = error_message
                     if response.status == 403:
-                        message = f"Accès refusé ({code}) : {message}"
-                    raise EconergyApiError(f"{code} : {message}")
+                        message = f"Accès refusé ({error_code}) : {message}"
+                    raise EconergyApiError(
+                        f"{error_code} : {message}",
+                        status_code=response.status,
+                        code=error_code,
+                        details=details,
+                    )
 
         except OAuth2TokenRequestReauthError as err:
             raise EconergyAuthError(
@@ -251,7 +314,13 @@ class EconergyApi:
         self, device_id: str, changes: dict[str, Any]
     ) -> dict[str, Any]:
         """PATCH documented radiator settings and wait for command acknowledgement."""
-        allowed = {"maxSetpointC", "keypadLocked", "childProtection"}
+        allowed = {
+            "maxSetpointC",
+            "keypadLocked",
+            "childProtection",
+            "windowDetection",
+            "calibrationC",
+        }
         if not isinstance(changes, dict) or not changes or set(changes) - allowed:
             raise EconergyApiError("Réglages Econergy invalides ou non documentés")
         if "maxSetpointC" in changes:
@@ -260,9 +329,15 @@ class EconergyApi:
                 raise EconergyApiError("La butée maximale attend une température numérique")
             if not 13.5 <= float(value) <= 30 or abs(float(value) * 2 - round(float(value) * 2)) > 0.0001:
                 raise EconergyApiError("La butée maximale doit être comprise entre 13,5 et 30 °C, par pas de 0,5 °C")
-        for key in ("keypadLocked", "childProtection"):
+        for key in ("keypadLocked", "childProtection", "windowDetection"):
             if key in changes and not isinstance(changes[key], bool):
                 raise EconergyApiError(f"Le réglage {key} attend une valeur booléenne")
+        if "calibrationC" in changes:
+            value = changes["calibrationC"]
+            if isinstance(value, bool) or not isinstance(value, int) or not -8 <= value <= 8:
+                raise EconergyApiError(
+                    "La calibration de la sonde doit être un entier compris entre −8 et +8 °C"
+                )
 
         command = await self._request(
             "PATCH", f"/devices/{device_id}/settings", payload=changes
