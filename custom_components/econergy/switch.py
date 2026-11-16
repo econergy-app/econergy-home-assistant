@@ -22,6 +22,7 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
             entities.extend([
                 EconergyDocumentedSettingSwitch(coordinator, device, "keypadLocked"),
                 EconergyDocumentedSettingSwitch(coordinator, device, "childProtection"),
+                EconergyDocumentedSettingSwitch(coordinator, device, "windowDetection"),
             ])
     async_add_entities(entities)
 
@@ -39,9 +40,12 @@ class EconergyDocumentedSettingSwitch(CoordinatorEntity, SwitchEntity):
         if key == "keypadLocked":
             self._attr_name = "Verrouillage du clavier"
             self._attr_icon = "mdi:lock"
-        else:
+        elif key == "childProtection":
             self._attr_name = "Protection enfant"
             self._attr_icon = "mdi:account-child"
+        else:
+            self._attr_name = "Activation détection de fenêtre"
+            self._attr_icon = "mdi:window-open-variant"
         self._attr_unique_id = f"{DOMAIN}_{self._device_id}_{key}"
 
     @property
@@ -59,11 +63,15 @@ class EconergyDocumentedSettingSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        description = (
-            "Empêche les modifications involontaires depuis le clavier du radiateur."
-            if self._key == "keypadLocked"
-            else "Limite la chauffe des parois du radiateur."
-        )
+        descriptions = {
+            "keypadLocked": "Empêche les modifications involontaires depuis le clavier du radiateur.",
+            "childProtection": "Limite la chauffe des parois du radiateur.",
+            "windowDetection": (
+                "Active ou désactive la détection automatique d'une chute brutale "
+                "de température. L'état fenêtre ouverte reste un capteur séparé."
+            ),
+        }
+        description = descriptions[self._key]
         return {
             "econergy_device_id": self._device_id,
             "api_setting": self._key,
