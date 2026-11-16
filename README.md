@@ -1,7 +1,7 @@
 # Econergy Cloud — Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
-[![Version bêta](https://img.shields.io/badge/version-2.1.7--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-cloud/releases)
+[![Version bêta](https://img.shields.io/badge/version-2.1.8--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-cloud/releases)
 
 Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera, basée sur l'API officielle Econergy Lab.
 
@@ -9,10 +9,10 @@ Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera
 
 ## Fonctionnalités
 
-- Découverte des domiciles autorisés par le compte Econergy et des radiateurs associés.
+- Découverte des domiciles autorisés par le compte Econergy et des radiateurs associés. L’identité Home Assistant de chaque radiateur repose sur son `deviceId` Econergy, jamais sur son nom ou son emplacement.
 - Entité `climate` : arrêt, hors-gel, manuel et programmation ; température ambiante et consigne.
 - Programmation hebdomadaire avec un éditeur en français : sept jours, jusqu'à trois plages Confort par jour, consignes Éco/Confort et copie des réglages entre jours. L'activation du mode Programmation reste gérée depuis le pilotage du radiateur.
-- Réglages : butée de température max, protection enfant et verrouillage du clavier.
+- Réglages : butée de température max, protection enfant, verrouillage du clavier, activation/désactivation de la détection de fenêtre ouverte et correction manuelle de la sonde (−8 à +8 °C).
 - Capteurs : température ambiante, puissance nominale, firmware, date d'installation, dernière communication, dernière remontée d'état, régime appliqué, état de chauffe, détection de fenêtre ouverte et consommation estimée.
 - Actualisation automatique des températures par demande de statut radio, avec un cycle cible d'environ cinq minutes par radiateur et un espacement minimal de 60 secondes entre demandes.
 - Actions : actualisation combinée manuelle de l'état et de la consommation, renommage du radiateur et récupération de la notice PDF via l'API Econergy.
@@ -91,8 +91,10 @@ Pour la durée de chauffe, utilisez `econergy:68c5597e5cb480c6cc800d66_heating_d
 
 ## Données et limites connues
 
-- L'API expose actuellement le mode `FROST` avec une consigne renvoyée de **7,5 °C**, alors que l'application Econergy affiche **7 °C**. La valeur de l'API est conservée telle quelle afin de ne pas masquer cet écart ; ce point doit être clarifié avec Econergy.
-- La détection de fenêtre ouverte est exposée en lecture seule dans les routes actuellement documentées. Aucune commande documentée d'activation/désactivation n'est disponible à ce jour.
+- En mode `FROST`, le thermostat affiche désormais la valeur `state.setpointC` renvoyée par l'API Econergy (7 °C selon la documentation 1.10.0), et non une valeur codée en dur.
+- Le capteur `windowOpen` indique une ouverture détectée. L’interrupteur « Activation détection de fenêtre » commande séparément le réglage `windowDetection`.
+- La correction de sonde `calibrationC` est un réglage manuel de −8 à +8 °C par pas de 1 °C. `state.measuredC` est déjà corrigé par Econergy : l’intégration ne lui applique aucune correction supplémentaire. Ne modifie ce réglage qu’après comparaison avec un thermomètre.
+- Le code `HOME_SUSPENDED` signifie que le pilotage du domicile est suspendu par Econergy : les lectures restent disponibles, mais les commandes et modifications sont refusées.
 - La notice est demandée à l'API via `GET /devices/{deviceId}/manual?lang=fr`. L'intégration ouvre le lien HTTPS retourné. Si l'API ne fournit pas le lien PDF attendu (erreur API ou réponse sans URL), l'erreur est remontée sans supposer que le document est absent.
 - L'endpoint de consommation utilisé par l'intégration retourne les 15 dernières journées complètes, mais l'intégration les archive durablement dans Home Assistant et alimente ses statistiques long terme. Les valeurs restent des estimations calculées à partir de la durée de chauffe et de la puissance nominale ; ce ne sont pas des relevés Linky ni des mesures électriques directes. Lorsqu'une journée est renvoyée sans mesure (`null`), la tuile affiche `0` par convention, tandis que l'archive conserve l'absence de donnée.
 - La lecture de l'inventaire cloud est effectuée toutes les cinq minutes. En complément, l'intégration demande automatiquement une nouvelle remontée d'état aux radiateurs, un par un : avec quatre radiateurs, chaque appareil est sollicité environ toutes les cinq minutes. Le bouton « Actualiser les infos » reste disponible pour forcer une demande manuelle.
