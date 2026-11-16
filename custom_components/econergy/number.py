@@ -24,6 +24,7 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
         entities.append(EconergyProgramNumber(coordinator, device, "ecoC"))
         entities.append(EconergyProgramNumber(coordinator, device, "comfortC"))
         entities.append(EconergyMaximumSetpointNumber(coordinator, device))
+        entities.append(EconergyProbeCalibrationNumber(coordinator, device))
     async_add_entities(entities)
 
 
@@ -185,4 +186,69 @@ class EconergyMaximumSetpointNumber(_EconergyNumber):
             )
         except Exception as err:
             raise HomeAssistantError(f"Modification de la butée maximale impossible : {err}") from err
+        self.async_write_ha_state()
+
+
+class EconergyProbeCalibrationNumber(_EconergyNumber):
+    """Manual sensor calibration offset, controlled only at the user's request."""
+
+    _attr_name = "Correction de la sonde"
+    _attr_icon = "mdi:thermometer-lines"
+    _attr_native_step = 1.0
+
+    def __init__(self, coordinator: EconergyCoordinator, device: dict[str, Any]) -> None:
+        super().__init__(coordinator, device)
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_calibrationc"
+
+    @property
+    def native_value(self) -> float | None:
+        value = (self.coordinator.settings.get(self._device_id) or {}).get("calibrationC")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def native_min_value(self) -> float:
+        return -8.0
+
+    @property
+    def native_max_value(self) -> float:
+        return 8.0
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "econergy_device_id": self._device_id,
+            "pas": "1 °C",
+            "attention": (
+                "Cette correction modifie la régulation du radiateur. "
+                "Ne la change qu'après comparaison avec un thermomètre."
+            ),
+            "temperature_measuredC_deja_corrigee": True,
+            "consigne_de_calibration": (
+                "thermomètre − (measuredC − calibrationC actuelle), arrondi au degré"
+            ),
+            "last_command": self.coordinator.last_commands.get(self._device_id),
+        }
+
+    async def async_set_native_value(self, value: float) -> None:
+        try:
+            target = float(value)
+        except (TypeError, ValueError) as err:
+            raise HomeAssistantError("La correction de sonde doit être un nombre entier.") from err
+        if not target.is_integer() or not -8 <= target <= 8:
+            raise HomeAssistantError(
+                "La correction de sonde doit être comprise entre −8 et +8 °C, par pas de 1 °C."
+            )
+        try:
+            await self.coordinator.async_update_device_setting(
+                self._device_id, "calibrationC", int(target)
+            )
+        except Exception as err:
+            raise HomeAssistantError(f"Modification de la correction de sonde impossible : {err}") from err
         self.async_write_ha_state()
