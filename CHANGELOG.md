@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.8 — bêta — 16 novembre 2026
+
+### Nouvelles fonctions
+- Ajoute l’interrupteur d’activation/désactivation de la détection de fenêtre ouverte (`windowDetection`). Le capteur `windowOpen` reste distinct : il indique l’événement détecté.
+- Ajoute le réglage de correction de sonde (`calibrationC`), de −8 à +8 °C par pas de 1 °C. La mesure `measuredC` est déjà corrigée par Econergy et n’est pas recalibrée une seconde fois dans Home Assistant.
+- Affiche la consigne hors-gel directement depuis `state.setpointC` ; aucune valeur fixe n’est utilisée.
+
+### Correctifs
+- Interprète les erreurs structurées via `error.code`, conserve `details` et reconnaît `HOME_SUSPENDED` sans désactiver la lecture du domicile.
+- Exploite `Retry-After` et `details.retryAfterS`. Lorsqu’une réponse `RATE_LIMITED` fournit un `commandId`, l’intégration suit la commande déjà en cours au lieu d’en envoyer une autre.
+- Persiste les dernières demandes d’état et les délais de limitation afin d’éviter une nouvelle demande trop rapprochée après redémarrage.
+- Supprime le rechargement automatique de l’intégration à chaque mise à jour de l’entrée OAuth : le renouvellement du jeton ne doit plus redémarrer inutilement le cycle d’actualisation des radiateurs.
+- Conserve le rythme de demande d’état d’environ cinq minutes par radiateur.
+- Les identifiants d’entités et d’appareils restent fondés sur le `deviceId` renvoyé par Econergy, indépendamment du nom d’affichage.
+
 ## 2.1.6 — bêta — 12 novembre 2026
 
 - Fusionne les demandes d'actualisation de l'état et de la consommation dans l'action « Actualiser les infos », en conservant l'identifiant unique de l'ancien bouton d'état.
