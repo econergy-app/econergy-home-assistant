@@ -1,7 +1,7 @@
 """Constants for Econergy Cloud."""
 
 DOMAIN = "econergy"
-NAME = "Econergy Cloud 2.1.7 (Bêta)"
+NAME = "Econergy Cloud 2.1.8 (Bêta)"
 BASE_URL = "https://econergy-app.fr/api/smarthome/v1"
 
 # Econergy Lab public OAuth application. Public clients do not use a secret.
@@ -23,7 +23,6 @@ STATUS_REQUEST_POLL_INTERVAL_SECONDS = 2
 STATUS_REQUEST_DEFAULT_RETRY_AFTER_SECONDS = 60
 
 DEFAULT_MANUAL_SETPOINT_C = 18.0
-FROST_SETPOINT_C = 7.5
 REQUEST_TIMEOUT_SECONDS = 20
 COMMAND_ACK_TIMEOUT_SECONDS = 15
 STATE_CONFIRM_TIMEOUT_SECONDS = 18
