@@ -12,3 +12,7 @@ entities:
     name: Protection enfant
   - entity: switch.econergy_bureau_verrouillage_du_clavier
     name: Verrouillage du clavier
+  - entity: switch.econergy_bureau_activation_detection_de_fenetre
+    name: Détection de fenêtre activée
+  - entity: number.econergy_bureau_correction_de_la_sonde
+    name: Correction de la sonde
