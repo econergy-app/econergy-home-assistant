@@ -21,7 +21,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import EconergyApiError, EconergyAuthError, EconergyCommandError
 from .const import (
     DEFAULT_MANUAL_SETPOINT_C,
-    FROST_SETPOINT_C,
     DOMAIN,
     MODE_FROST,
     MODE_MANUAL,
@@ -80,10 +79,9 @@ class EconergyRadiatorClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         self._pending_setpoint: float | None = None
         self._verification_task: asyncio.Task | None = None
 
-        # Keep the last valid MANUAL target separately from the current API
-        # setpoint: OFF returns 0 °C and FROST is displayed at 7.5 °C, neither of which
-        # is a valid manual target in Home Assistant. This value is display-only
-        # until a user explicitly changes the temperature.
+        # Keep the last valid MANUAL target separately from OFF/FROST API
+        # setpoints, neither of which is a valid manual target in Home Assistant.
+        # This cached value is display-only until the user changes the temperature.
         self._last_manual_setpoint = DEFAULT_MANUAL_SETPOINT_C
         self._remember_manual_setpoint_from_device(device)
 
@@ -236,7 +234,11 @@ class EconergyRadiatorClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
         # entity's 13,5–30 °C manual range. Keep the prior valid target visible
         # while a mode-only command is being confirmed.
         if mode == MODE_FROST:
-            return FROST_SETPOINT_C
+            value = self._state.get("setpointC")
+            try:
+                return round(float(value), 1) if value is not None else None
+            except (TypeError, ValueError):
+                return None
         if mode == MODE_MANUAL:
             if self._pending_command_id and self._pending_setpoint is not None:
                 return self._pending_setpoint
