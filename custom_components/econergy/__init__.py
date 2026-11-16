@@ -209,8 +209,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             or (entity.domain == "text" and "program" in unique_id)
             or (entity.domain == "button" and "program" in unique_id and not unique_id.endswith("_open_program"))
             or (entity.domain == "binary_sensor" and unique_id.endswith("_window_open_state"))
-            or (entity.domain == "switch" and not unique_id.endswith(("_keypadlocked", "_childprotection")))
-            or (entity.domain == "number" and not unique_id.endswith(("_ecoc", "_comfortc", "_max_setpoint_c")))
+            or (entity.domain == "switch" and not unique_id.endswith(("_keypadlocked", "_childprotection", "_windowdetection")))
+            or (entity.domain == "number" and not unique_id.endswith(("_ecoc", "_comfortc", "_max_setpoint_c", "_calibrationc")))
         )
         if legacy_entity:
             registry.async_remove(entity.entity_id)
@@ -247,7 +247,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "api": api,
         "coordinator": coordinator,
     }
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.async_start_deferred_initialization(entry)
     return True
@@ -292,10 +291,6 @@ async def async_remove_config_entry_device(
             ", ".join(sorted(device_ids)),
         )
     return can_remove
-
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
