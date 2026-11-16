@@ -73,6 +73,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.program_locks: dict[str, asyncio.Lock] = {}
         self.status_request_cooldowns: dict[str, float] = {}
         self.status_request_last_attempt: dict[str, float] = {}
+        self._status_request_limits_store = Store(
+            hass, 1, f"{DOMAIN}_{entry.entry_id}_status_request_limits"
+        )
         self.device_write_locks: dict[str, asyncio.Lock] = {}
         self._initial_devices: list[dict[str, Any]] | None = None
         self._startup_task: asyncio.Task | None = None
@@ -113,6 +116,32 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for device_id, command in saved_commands.items()
                 if str(device_id) in known_ids and isinstance(command, dict)
             }
+
+        # Keep the API's one-request-per-minute protection across HA restarts.
+        saved_limits = await self._status_request_limits_store.async_load()
+        if isinstance(saved_limits, dict):
+            loop = asyncio.get_running_loop()
+            now_monotonic = loop.time()
+            now_utc = datetime.now(timezone.utc)
+            for device_id, timestamp in (saved_limits.get("last_attempts") or {}).items():
+                if str(device_id) not in known_ids:
+                    continue
+                parsed = self._parse_api_timestamp(timestamp)
+                if parsed is None:
+                    continue
+                elapsed = max(0.0, (now_utc - parsed).total_seconds())
+                if elapsed < STATUS_REQUEST_MIN_INTERVAL_SECONDS:
+                    self.status_request_last_attempt[str(device_id)] = now_monotonic - elapsed
+            for device_id, timestamp in (saved_limits.get("cooldowns") or {}).items():
+                if str(device_id) not in known_ids:
+                    continue
+                parsed = self._parse_api_timestamp(timestamp)
+                if parsed is None:
+                    continue
+                remaining = (parsed - now_utc).total_seconds()
+                if remaining > 0:
+                    self.status_request_cooldowns[str(device_id)] = now_monotonic + remaining
+
         for device in self._initial_devices:
             device_id = str(device.get("id") or "")
             if device_id:
@@ -166,6 +195,33 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "devices": dict(self.consumption),
                 "loaded_date": self.consumption_loaded_date,
             },
+            1,
+        )
+
+    def _persist_status_request_limits(self) -> None:
+        """Persist request timestamps and Retry-After deadlines using UTC timestamps."""
+        loop = asyncio.get_running_loop()
+        now_monotonic = loop.time()
+        now_utc = datetime.now(timezone.utc)
+        known_ids = {
+            str(device.get("id"))
+            for device in ((self.data or {}).get("devices") or self._initial_devices or [])
+            if device.get("id")
+        }
+        last_attempts = {
+            device_id: (
+                now_utc - timedelta(seconds=max(0.0, now_monotonic - attempted_at))
+            ).isoformat()
+            for device_id, attempted_at in self.status_request_last_attempt.items()
+            if device_id in known_ids
+        }
+        cooldowns = {
+            device_id: (now_utc + timedelta(seconds=deadline - now_monotonic)).isoformat()
+            for device_id, deadline in self.status_request_cooldowns.items()
+            if device_id in known_ids and deadline > now_monotonic
+        }
+        self._status_request_limits_store.async_delay_save(
+            lambda: {"last_attempts": last_attempts, "cooldowns": cooldowns},
             1,
         )
 
@@ -526,6 +582,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         requested_at_iso = requested_at.isoformat()
         # The Lab allows at most one status request per minute and per radiator.
         self.status_request_last_attempt[device_id] = loop.time()
+        self._persist_status_request_limits()
         result: dict[str, Any] = {
             "requested_at": requested_at_iso,
             "command_id": None,
@@ -535,19 +592,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "error": None,
         }
 
+        existing_command_id: str | None = None
         try:
             command = await self.api.request_device_status(device_id)
-            created_at = command.get("createdAt")
-            if isinstance(created_at, str) and created_at.strip():
-                try:
-                    api_created_at = datetime.fromisoformat(created_at.strip().replace("Z", "+00:00"))
-                    if api_created_at.tzinfo is None:
-                        api_created_at = api_created_at.replace(tzinfo=timezone.utc)
-                    requested_at = api_created_at.astimezone(timezone.utc)
-                    requested_at_iso = requested_at.isoformat()
-                    result["requested_at"] = requested_at_iso
-                except (TypeError, ValueError, OverflowError):
-                    pass
         except EconergyAuthError:
             raise
         except EconergyRateLimitError as err:
@@ -556,23 +603,69 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 retry_after = STATUS_REQUEST_DEFAULT_RETRY_AFTER_SECONDS
             retry_after = max(1.0, retry_after)
             self.status_request_cooldowns[device_id] = loop.time() + retry_after
+            self._persist_status_request_limits()
+
+            # Econergy may return the ID of a request already in progress.
+            # Follow that command instead of sending another radio wake-up.
+            if not err.command_id:
+                result.update({
+                    "status": "RATE_LIMITED",
+                    "retry_after_seconds": int(retry_after),
+                    "error": str(err),
+                })
+                _LOGGER.warning(
+                    "Demande de statut Econergy limitée pour %s (Retry-After=%ss)",
+                    device_id,
+                    int(retry_after),
+                )
+                return None, result
+
+            existing_command_id = err.command_id
+            try:
+                command = await self.api.get_command(existing_command_id)
+            except EconergyAuthError:
+                raise
+            except EconergyApiError as follow_error:
+                result.update({
+                    "status": "RATE_LIMITED",
+                    "command_id": existing_command_id,
+                    "retry_after_seconds": int(retry_after),
+                    "error": (
+                        f"{err} ; impossible de suivre la demande déjà en cours : "
+                        f"{follow_error}"
+                    ),
+                })
+                _LOGGER.warning(
+                    "Demande Econergy limitée pour %s ; suivi de la commande %s impossible : %s",
+                    device_id,
+                    existing_command_id,
+                    follow_error,
+                )
+                return None, result
+
             result.update({
-                "status": "RATE_LIMITED",
+                "rate_limit_existing_command": True,
                 "retry_after_seconds": int(retry_after),
-                "error": str(err),
             })
-            _LOGGER.warning(
-                "Demande de statut Econergy limitée pour %s (Retry-After=%ss)",
+            _LOGGER.info(
+                "Econergy limite une nouvelle demande pour %s ; suivi de la commande existante %s",
                 device_id,
-                int(retry_after),
+                existing_command_id,
             )
-            return None, result
         except EconergyApiError as err:
             result.update({"status": "ERROR", "error": str(err)})
             _LOGGER.warning("Demande de statut Econergy impossible pour %s : %s", device_id, err)
             return None, result
 
-        command_id = str(command["commandId"])
+        created_at = command.get("createdAt")
+        if isinstance(created_at, str) and created_at.strip():
+            api_created_at = self._parse_api_timestamp(created_at)
+            if api_created_at is not None:
+                requested_at = api_created_at
+                requested_at_iso = requested_at.isoformat()
+                result["requested_at"] = requested_at_iso
+
+        command_id = str(command.get("commandId") or existing_command_id or "")
         command_status = str(command.get("status") or "SENT").strip().upper()
         result["command_id"] = command_id
         result["command_status"] = command_status
@@ -655,7 +748,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "state_updated_at": updated_at,
                     "error": None,
                 })
-                self.status_request_cooldowns.pop(device_id, None)
+                if loop.time() >= self.status_request_cooldowns.get(device_id, 0.0):
+                    self.status_request_cooldowns.pop(device_id, None)
+                self._persist_status_request_limits()
                 _LOGGER.info(
                     "État Econergy actualisé pour %s (commande=%s, updatedAt=%s)",
                     device_id,
@@ -1104,11 +1199,28 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise UpdateFailed("Econergy n'a pas confirmé le nouveau nom du radiateur.")
 
     async def async_update_device_setting(self, device_id: str, key: str, value: Any) -> dict[str, Any]:
-        """Update only the three settings that Econergy documents as writable."""
-        if key not in {"maxSetpointC", "keypadLocked", "childProtection"}:
+        """Update only the settings that Econergy documents as writable."""
+        if key not in {
+            "maxSetpointC",
+            "keypadLocked",
+            "childProtection",
+            "windowDetection",
+            "calibrationC",
+        }:
             raise ValueError("Ce réglage n'est pas exposé comme modifiable par l'API Econergy.")
-        if key in {"keypadLocked", "childProtection"} and not isinstance(value, bool):
+        if key in {"keypadLocked", "childProtection", "windowDetection"} and not isinstance(value, bool):
             raise ValueError("Ce réglage attend une valeur marche/arrêt.")
+        if key == "calibrationC":
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not float(value).is_integer()
+                or not -8 <= int(value) <= 8
+            ):
+                raise ValueError(
+                    "La correction de sonde doit être un nombre entier compris entre −8 et +8 °C."
+                )
+            value = int(value)
         if key == "maxSetpointC":
             if isinstance(value, bool):
                 raise ValueError("La butée maximale doit être une température numérique.")
