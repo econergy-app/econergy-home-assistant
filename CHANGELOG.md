@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.9 — bêta — 16 novembre 2026
+
+### Organisation de la fiche appareil
+- Réordonne visuellement les réglages : « Appareil · Nom du radiateur », butée maximale, consignes Confort et Éco, correction de sonde, puis les trois options de détection de fenêtre, protection enfant et verrouillage du clavier.
+- Préserve les anciens identifiants suggérés pour le nom du radiateur et les interrupteurs : les `entity_id` existants ne sont pas renommés et les nouvelles installations conservent les mêmes bases d’identifiants.
+- Déplace les informations techniques (date d’installation, communication, remontée d’état, firmware, puissance nominale et statut de commande) dans la catégorie Home Assistant « Diagnostics ». Les capteurs utiles au quotidien restent dans « Capteurs ».
+
+### Notice PDF
+- Traite explicitement le code API `MANUAL_NOT_FOUND` comme une absence de document : une notification persistante indique qu'aucun PDF n'est disponible, sans faire échouer l'action `button.press`.
+- Si une URL PDF HTTPS est fournie, le lien temporaire reste affiché dans une notification comme auparavant.
+- Une erreur API différente de `MANUAL_NOT_FOUND` continue d'être signalée comme une véritable erreur.
+
 ## 2.1.8 — bêta — 16 novembre 2026
 
 ### Nouvelles fonctions

@@ -26,7 +26,7 @@ class EconergyDeviceNameText(CoordinatorEntity, TextEntity):
     """Rename a radiator with the documented PATCH /devices/{deviceId} endpoint."""
 
     _attr_has_entity_name = True
-    _attr_name = "Nom du radiateur"
+    _attr_name = "Appareil · Nom du radiateur"
     _attr_icon = "mdi:form-textbox"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_mode = TextMode.TEXT
@@ -37,6 +37,11 @@ class EconergyDeviceNameText(CoordinatorEntity, TextEntity):
         super().__init__(coordinator)
         self._device_id = str(device["id"])
         self._attr_unique_id = f"{DOMAIN}_{self._device_id}_device_name"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Keep the original entity_id seed while the displayed label is reordered."""
+        return "Nom du radiateur"
 
     @property
     def _device(self) -> dict[str, Any]:

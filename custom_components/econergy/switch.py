@@ -38,15 +38,24 @@ class EconergyDocumentedSettingSwitch(CoordinatorEntity, SwitchEntity):
         self._device_id = str(device["id"])
         self._key = key
         if key == "keypadLocked":
-            self._attr_name = "Verrouillage du clavier"
+            self._attr_name = "Options · Verrouillage du clavier"
             self._attr_icon = "mdi:lock"
         elif key == "childProtection":
-            self._attr_name = "Protection enfant"
+            self._attr_name = "Options · Protection enfant"
             self._attr_icon = "mdi:account-child"
         else:
-            self._attr_name = "Activation détection de fenêtre"
+            self._attr_name = "Options · Détection de fenêtre"
             self._attr_icon = "mdi:window-open-variant"
         self._attr_unique_id = f"{DOMAIN}_{self._device_id}_{key}"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Keep original entity_id seeds while grouping the displayed option labels."""
+        return {
+            "keypadLocked": "Verrouillage du clavier",
+            "childProtection": "Protection enfant",
+            "windowDetection": "Activation détection de fenêtre",
+        }[self._key]
 
     @property
     def _settings(self) -> dict[str, Any]:

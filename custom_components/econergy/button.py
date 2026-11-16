@@ -11,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import EconergyApiError
+from .api import EconergyApiError, EconergyManualNotFoundError
 from .const import DOMAIN
 from .coordinator import EconergyCoordinator
 
@@ -157,10 +157,21 @@ class EconergyManualButton(_EconergyButton):
     async def async_press(self) -> None:
         try:
             manual = await self.coordinator.async_get_manual(self._device_id, "fr")
+        except EconergyManualNotFoundError:
+            name = str(self._device.get("name") or "Radiateur")
+            persistent_notification.async_create(
+                self.hass,
+                (
+                    "Aucune notice PDF n'est actuellement disponible pour ce radiateur "
+                    "dans la bibliothèque Econergy."
+                ),
+                title=f"Notice Econergy – {name}",
+                notification_id=f"econergy_manual_{self._device_id}",
+            )
+            return
         except EconergyApiError as err:
             raise HomeAssistantError(
-                f"L'API Econergy n'a pas fourni le lien PDF attendu via "
-                f"GET /devices/{self._device_id}/manual?lang=fr : {err}"
+                f"Impossible de récupérer la notice PDF Econergy : {err}"
             ) from err
         except Exception as err:
             raise HomeAssistantError(

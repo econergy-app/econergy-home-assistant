@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -164,6 +164,7 @@ class EconergyDevicePowerSensor(_EconergyDeviceEntity, SensorEntity):
     """Nominal radiator power reported by the API."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Puissance nominale"
     _attr_device_class = SensorDeviceClass.POWER
     _attr_native_unit_of_measurement = "W"
@@ -186,6 +187,7 @@ class EconergyFirmwareSensor(_EconergyDeviceEntity, SensorEntity):
     """Firmware version reported by the API."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Firmware"
     _attr_icon = "mdi:chip"
 
@@ -204,6 +206,7 @@ class EconergyInstalledAtSensor(_EconergyDeviceEntity, SensorEntity):
     """Radiator installation date reported in the device information."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Date d'installation"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:calendar-check-outline"
@@ -228,6 +231,7 @@ class EconergyLastSeenSensor(_EconergyDeviceEntity, SensorEntity):
     """Last communication timestamp reported by the API."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Dernière communication"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:cloud-check-outline"
@@ -252,6 +256,7 @@ class EconergyStateUpdatedSensor(_EconergyDeviceEntity, SensorEntity):
     """Actual timestamp of the last full state report, not the API request time."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Dernière remontée d'état"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-check-outline"
@@ -480,6 +485,7 @@ class EconergyLastCommandSensor(_EconergyDeviceEntity, SensorEntity):
     """Most recent write acknowledgement returned by Econergy."""
 
     _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_name = "Statut de la dernière commande"
     _attr_icon = "mdi:check-network-outline"
 

@@ -1,7 +1,7 @@
 # Econergy Cloud — Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
-[![Version bêta](https://img.shields.io/badge/version-2.1.8--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-cloud/releases)
+[![Version bêta](https://img.shields.io/badge/version-2.1.9--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-cloud/releases)
 
 Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera, basée sur l'API officielle Econergy Lab.
 
@@ -15,7 +15,7 @@ Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera
 - Réglages : butée de température max, protection enfant, verrouillage du clavier, activation/désactivation de la détection de fenêtre ouverte et correction manuelle de la sonde (−8 à +8 °C).
 - Capteurs : température ambiante, puissance nominale, firmware, date d'installation, dernière communication, dernière remontée d'état, régime appliqué, état de chauffe, détection de fenêtre ouverte et consommation estimée.
 - Actualisation automatique des températures par demande de statut radio, avec un cycle cible d'environ cinq minutes par radiateur et un espacement minimal de 60 secondes entre demandes.
-- Actions : actualisation combinée manuelle de l'état et de la consommation, renommage du radiateur et récupération de la notice PDF via l'API Econergy.
+- Actions : actualisation combinée manuelle de l'état et de la consommation, renommage du radiateur et récupération de la notice PDF via l'API Econergy. Si aucun PDF n'est publié (`MANUAL_NOT_FOUND`), une notification informative s'affiche sans erreur de service.
 - Suppression sécurisée des anciens appareils dans Home Assistant lorsque leur identifiant n'est plus présent dans l'inventaire Econergy.
 - Archivage durable des relevés journaliers de consommation estimée et de durée de chauffe, avec import dans les statistiques long terme de Home Assistant.
 - Suivi des commandes avec attente de leur confirmation par l'API ; le dernier statut est conservé après un redémarrage de Home Assistant et aucune commande incertaine n'est renvoyée automatiquement.
@@ -49,6 +49,10 @@ Après une mise à jour HACS, redémarre Home Assistant si nécessaire. Ne suppr
 Sur la fiche de chaque radiateur, utilise l'action **Programmes du radiateur**. L'éditeur présente les jours de la semaine et permet de définir jusqu'à trois plages Confort par jour. En dehors de ces plages, le radiateur reste en Éco.
 
 L'enregistrement du planning et l'activation du mode `PROG` sont deux opérations distinctes : après avoir sauvegardé les horaires, active le mode Programmation pour que le radiateur les applique.
+
+## Organisation de la fiche appareil
+
+Les réglages sont présentés dans un ordre lisible : identité du radiateur, butée et consignes, correction de sonde, puis les trois interrupteurs regroupés sous « Options ». Les informations purement techniques sont classées dans la catégorie Home Assistant « Diagnostics ». Les identifiants uniques et les identifiants d'entités existants sont conservés.
 
 ## Exemples Lovelace facultatifs
 
@@ -95,7 +99,7 @@ Pour la durée de chauffe, utilisez `econergy:68c5597e5cb480c6cc800d66_heating_d
 - Le capteur `windowOpen` indique une ouverture détectée. L’interrupteur « Activation détection de fenêtre » commande séparément le réglage `windowDetection`.
 - La correction de sonde `calibrationC` est un réglage manuel de −8 à +8 °C par pas de 1 °C. `state.measuredC` est déjà corrigé par Econergy : l’intégration ne lui applique aucune correction supplémentaire. Ne modifie ce réglage qu’après comparaison avec un thermomètre.
 - Le code `HOME_SUSPENDED` signifie que le pilotage du domicile est suspendu par Econergy : les lectures restent disponibles, mais les commandes et modifications sont refusées.
-- La notice est demandée à l'API via `GET /devices/{deviceId}/manual?lang=fr`. L'intégration ouvre le lien HTTPS retourné. Si l'API ne fournit pas le lien PDF attendu (erreur API ou réponse sans URL), l'erreur est remontée sans supposer que le document est absent.
+- La notice est demandée à l'API via `GET /devices/{deviceId}/manual?lang=fr`. Si un lien HTTPS est disponible, il est proposé dans une notification. Si l'API renvoie `MANUAL_NOT_FOUND` ou ne fournit aucun lien PDF, une notification indique que la notice n'est pas disponible ; les autres erreurs API restent signalées.
 - L'endpoint de consommation utilisé par l'intégration retourne les 15 dernières journées complètes, mais l'intégration les archive durablement dans Home Assistant et alimente ses statistiques long terme. Les valeurs restent des estimations calculées à partir de la durée de chauffe et de la puissance nominale ; ce ne sont pas des relevés Linky ni des mesures électriques directes. Lorsqu'une journée est renvoyée sans mesure (`null`), la tuile affiche `0` par convention, tandis que l'archive conserve l'absence de donnée.
 - La lecture de l'inventaire cloud est effectuée toutes les cinq minutes. En complément, l'intégration demande automatiquement une nouvelle remontée d'état aux radiateurs, un par un : avec quatre radiateurs, chaque appareil est sollicité environ toutes les cinq minutes. Le bouton « Actualiser les infos » reste disponible pour forcer une demande manuelle.
 - Les scénarios, configurations avancées, gestion des membres et les commandes de présence/absence ne sont pas exposés par les routes publiques actuellement utilisées/documentées par cette version ; ils ne sont pas simulés par l'intégration.

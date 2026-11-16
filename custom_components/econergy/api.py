@@ -54,6 +54,10 @@ class EconergyHomeSuspendedError(EconergyApiError):
     """The selected home can still be read, but write operations are suspended."""
 
 
+class EconergyManualNotFoundError(EconergyApiError):
+    """The radiator has no PDF manual published in Econergy's document library."""
+
+
 class EconergyCommandError(EconergyApiError):
     """A command was explicitly rejected by the radiator/API."""
 
@@ -289,11 +293,24 @@ class EconergyApi:
     async def get_manual(self, device_id: str, lang: str = "fr") -> dict[str, Any]:
         """Fetch a fresh, temporary radiator manual URL (never cache the URL)."""
         language = (lang or "fr").strip().lower()[:2]
-        data = await self._request(
-            "GET", f"/devices/{device_id}/manual?lang={language}"
-        )
+        try:
+            data = await self._request(
+                "GET", f"/devices/{device_id}/manual?lang={language}"
+            )
+        except EconergyApiError as err:
+            if err.code == "MANUAL_NOT_FOUND":
+                raise EconergyManualNotFoundError(
+                    "Aucune notice PDF n'est publiée pour ce radiateur.",
+                    status_code=err.status_code,
+                    code=err.code,
+                    details=err.details,
+                ) from err
+            raise
         if not isinstance(data, dict) or not data.get("url"):
-            raise EconergyApiError("Econergy n'a pas retourné de lien de notice")
+            raise EconergyManualNotFoundError(
+                "Econergy n'a pas publié de lien PDF pour ce radiateur.",
+                code="MANUAL_NOT_FOUND",
+            )
         return data
 
     async def get_settings(self, device_id: str) -> dict[str, Any]:
