@@ -17,6 +17,8 @@ from homeassistant.components.recorder.statistics import async_add_external_stat
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CoreState, EVENT_HOMEASSISTANT_STARTED, HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util.unit_conversion import EnergyConverter
@@ -54,6 +56,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         home_name: str,
     ) -> None:
         self.api = api
+        self.entry = entry
         self.home_id = home_id
         self.home_name = home_name
         self.programs: dict[str, dict[str, Any]] = {}
@@ -91,11 +94,60 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=entry,
         )
 
+    def _remove_orphaned_device_registry_entries(self, active_device_ids: set[str]) -> None:
+        """Remove Econergy devices and entities no longer returned by the home inventory."""
+        device_registry = dr.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
+
+        for device_entry in dr.async_entries_for_config_entry(
+            device_registry, self.entry.entry_id
+        ):
+            device_ids = {
+                str(identifier[1])
+                for identifier in device_entry.identifiers
+                if len(identifier) == 2 and identifier[0] == DOMAIN
+            }
+            if not device_ids or not device_ids.isdisjoint(active_device_ids):
+                continue
+
+            # Remove every Econergy entity first, including disabled entities.
+            # Keep the device if another integration still has entities attached.
+            stale_entities = er.async_entries_for_device(
+                entity_registry, device_entry.id, include_disabled_entities=True
+            )
+            removed_entities = 0
+            for entity_entry in stale_entities:
+                if entity_entry.platform == DOMAIN:
+                    entity_registry.async_remove(entity_entry.entity_id)
+                    removed_entities += 1
+
+            remaining_entities = er.async_entries_for_device(
+                entity_registry, device_entry.id, include_disabled_entities=True
+            )
+            if remaining_entities:
+                _LOGGER.warning(
+                    "Ancien appareil Econergy %s conservé dans le registre : %s entité(s) d'une autre intégration restent associées",
+                    ", ".join(sorted(device_ids)),
+                    len(remaining_entities),
+                )
+                continue
+
+            device_registry.async_remove_device(device_entry.id)
+            _LOGGER.info(
+                "Ancien appareil Econergy supprimé automatiquement : %s (%s entité(s) supprimée(s))",
+                ", ".join(sorted(device_ids)),
+                removed_entities,
+            )
+
     async def async_initialize(self) -> None:
         """Fetch the device inventory only; defer status commands and programs."""
         devices = await self.api.get_devices(self.home_id)
         self._initial_devices = [dict(device) for device in devices]
         known_ids = {str(device.get("id")) for device in self._initial_devices if device.get("id")}
+        # The API inventory is authoritative. Do not purge anything on an empty
+        # response, but remove stale registry entries as soon as active devices are known.
+        if known_ids:
+            self._remove_orphaned_device_registry_entries(known_ids)
         saved_consumption = await self._consumption_store.async_load()
         if isinstance(saved_consumption, dict):
             saved_devices = saved_consumption.get("devices") or {}
@@ -456,7 +508,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             cursor = (cursor + 1) % len(devices)
             spacing = max(
                 float(STATUS_REQUEST_MIN_INTERVAL_SECONDS),
-                INVENTORY_POLL_INTERVAL_SECONDS / len(devices),
+                STATUS_REFRESH_CYCLE_SECONDS / len(devices),
             )
             started = asyncio.get_running_loop().time()
 
@@ -827,6 +879,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.update_interval = timedelta(seconds=INVENTORY_POLL_INTERVAL_SECONDS)
         known_ids = {str(device.get("id")) for device in refreshed_devices if device.get("id")}
+        if known_ids:
+            self._remove_orphaned_device_registry_entries(known_ids)
         self.programs = {key: value for key, value in self.programs.items() if key in known_ids}
         self.program_errors = {key: value for key, value in self.program_errors.items() if key in known_ids}
         self.settings = {key: value for key, value in self.settings.items() if key in known_ids}

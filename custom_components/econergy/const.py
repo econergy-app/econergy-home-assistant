@@ -13,8 +13,10 @@ OAUTH_SCOPES = "readonly write multihome"
 PROGRAM_PANEL_PATH = "econergy-program"
 PROGRAM_PANEL_URL = "/econergy-program"
 
-# Read the published home inventory every five minutes.
-INVENTORY_POLL_INTERVAL_SECONDS = 300
+# Read the published home inventory once per hour; this also detects removed/re-paired radiators.
+INVENTORY_POLL_INTERVAL_SECONDS = 3600
+# Target a full automatic radio status refresh cycle every five minutes, independently of inventory polling.
+STATUS_REFRESH_CYCLE_SECONDS = 300
 # Econergy allows at most one status-request per radiator per minute.
 STATUS_REQUEST_MIN_INTERVAL_SECONDS = 60
 STATUS_REQUEST_COMMAND_TIMEOUT_SECONDS = 20

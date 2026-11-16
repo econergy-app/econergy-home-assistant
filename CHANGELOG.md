@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.10 — bêta — 16 novembre 2026
+
+### Synchronisation et nettoyage des appareils
+- Contrôle l'inventaire Econergy une fois par heure au lieu de toutes les cinq minutes.
+- Supprime automatiquement du registre Home Assistant les anciens appareils Econergy absents de l'inventaire confirmé, ainsi que leurs entités Econergy, dès l'initialisation puis à chaque synchronisation horaire.
+- Ne supprime jamais les appareils encore présents dans la réponse de l'API ; si des entités d'une autre intégration restent associées, l'appareil est conservé.
+
+### Actualisation des températures et respect des limites API
+- Maintient le cycle indépendant de demandes de statut radio avec une cible de cinq minutes par radiateur (environ 75 secondes entre deux demandes pour un domicile de quatre radiateurs).
+- Conserve le délai minimal d'une minute par radiateur, la persistance des demandes après redémarrage et la gestion des réponses 429/Retry-After ; le changement de cadence de l'inventaire ne modifie pas ces protections.
+
 ## 2.1.9 — bêta — 16 novembre 2026
 
 ### Organisation de la fiche appareil
