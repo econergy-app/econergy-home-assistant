@@ -58,7 +58,7 @@ Le dossier `custom_components/econergy/examples/lovelace` contient plusieurs car
 - `radiateur_bureau_etat.yaml` : état, température, régime, chauffe, fenêtre et ventilateur.
 - `radiateur_bureau_consommation.yaml` : graphiques Recorder sur 30 jours à partir des statistiques long terme Econergy.
 - `radiateur_bureau_consommation_15_jours.yaml` : graphiques journaliers Recorder des 15 derniers jours, pour l'énergie et la durée de chauffe.
-- `radiateur_bureau_reglages.yaml` : consignes Éco/Confort, butée max, protection enfant et verrouillage du clavier.
+- `radiateur_bureau_reglages.yaml` : consignes Éco/Confort, butée max, protection enfant, verrouillage du clavier, détection de fenêtre et correction de sonde.
 - `radiateur_bureau_diagnostic.yaml` : firmware, puissance, dernière communication et statut de commande.
 - `radiateur_bureau_actions.yaml` : actualisation, programmation et notice.
 
