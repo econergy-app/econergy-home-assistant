@@ -89,7 +89,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=f"Econergy {home_id}",
-            # The five-minute polling cadence starts after the first deferred
+            # The hourly inventory polling cadence starts after the first deferred
             # cloud refresh, not while Home Assistant is still starting.
             update_interval=None,
             config_entry=entry,
@@ -838,7 +838,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Read the published inventory without waking every radiator.
 
         Econergy explicitly recommends using status-request only when a user
-        needs a fresh measurement. The regular five-minute cycle is therefore
+        needs a fresh measurement. The regular hourly inventory cycle is therefore
         a lightweight GET of already-published states; explicit refresh and
         command verification still use the wake-up/status-request route.
         """
