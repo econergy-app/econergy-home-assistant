@@ -1,7 +1,7 @@
 """Constants for Econergy Cloud."""
 
 DOMAIN = "econergy"
-NAME = "Econergy Cloud 2.1.10 (Bêta)"
+NAME = "Econergy Cloud 2.1.11 (Bêta)"
 BASE_URL = "https://econergy-app.fr/api/smarthome/v1"
 
 # Econergy Lab public OAuth application. Public clients do not use a secret.
@@ -19,7 +19,7 @@ INVENTORY_POLL_INTERVAL_SECONDS = 3600
 STATUS_REFRESH_CYCLE_SECONDS = 300
 # Econergy allows at most one status-request per radiator per minute.
 STATUS_REQUEST_MIN_INTERVAL_SECONDS = 60
-STATUS_REQUEST_COMMAND_TIMEOUT_SECONDS = 20
+STATUS_REQUEST_COMMAND_TIMEOUT_SECONDS = 40
 STATUS_REQUEST_STATE_TIMEOUT_SECONDS = 30
 STATUS_REQUEST_POLL_INTERVAL_SECONDS = 2
 STATUS_REQUEST_DEFAULT_RETRY_AFTER_SECONDS = 60

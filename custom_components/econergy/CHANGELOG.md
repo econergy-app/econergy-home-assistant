@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.11 — bêta — 17 novembre 2026
+
+### Suivi des demandes d'actualisation
+- Porte à **40 secondes** (au lieu de 20) le délai maximal de suivi de l'acquittement d'une demande de statut envoyée à Econergy, afin de mieux tolérer un traitement plus lent côté cloud.
+- Conserve ensuite la vérification de fraîcheur de l'état pendant **30 secondes** : la température n'est considérée comme actualisée que si `state.updatedAt` est postérieur à la demande.
+- Ne modifie pas le cycle d'actualisation ciblé sur cinq minutes par radiateur, la limite minimale d'une demande par radiateur et par minute, ni l'intervalle de suivi des commandes de deux secondes.
+- Si le cloud ne confirme toujours pas la commande ou ne renvoie pas de nouvel état, l'intégration continue de signaler que l'actualisation n'a pas été confirmée.
+
 ## 2.1.10 — bêta — 16 novembre 2026
 
 ### Synchronisation et nettoyage des appareils
