@@ -438,20 +438,20 @@ class EconergyRadiatorClimate(CoordinatorEntity, RestoreEntity, ClimateEntity):
                 )
                 _LOGGER.warning(
                     "Econergy %s : commande %s (%s) non confirmée par une nouvelle remontée d'état",
-                    self._device_id, command_id, mode,
+                    self.coordinator.device_log_label(self._device_id), command_id, mode,
                 )
         except EconergyCommandError as err:
             if self._last_command_id == command_id:
                 self._last_command_status = err.status or "FAILED"
                 self._last_command_confirmed = False
                 self._last_command_message = str(err)
-                _LOGGER.warning("Econergy %s : commande %s échouée : %s", self._device_id, command_id, err)
+                _LOGGER.warning("Econergy %s : commande %s échouée : %s", self.coordinator.device_log_label(self._device_id), command_id, err)
         except (EconergyAuthError, EconergyApiError) as err:
             if self._last_command_id == command_id:
                 self._last_command_status = "ERROR"
                 self._last_command_confirmed = False
                 self._last_command_message = str(err)
-                _LOGGER.warning("Econergy %s : vérification de commande %s impossible : %s", self._device_id, command_id, err)
+                _LOGGER.warning("Econergy %s : vérification de commande %s impossible : %s", self.coordinator.device_log_label(self._device_id), command_id, err)
         except asyncio.CancelledError:
             raise
         finally:

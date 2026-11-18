@@ -145,7 +145,7 @@ async def _async_set_program_day(hass: HomeAssistant, call: ServiceCall) -> dict
     except Exception as err:
         _LOGGER.error(
             "Échec de l'enregistrement du programme (%s, champs=%s, étapes_confirmées=%s)",
-            device_id,
+            coordinator.device_log_label(device_id),
             ",".join(changes),
             len(updates),
             exc_info=True,
@@ -288,7 +288,7 @@ async def async_remove_config_entry_device(
     if can_remove:
         _LOGGER.info(
             "Suppression de l'ancien appareil Econergy du registre Home Assistant : %s",
-            ", ".join(sorted(device_ids)),
+            f"{device_entry.name_by_user or device_entry.name or 'Radiateur'} ({', '.join(sorted(device_ids))})",
         )
     return can_remove
 

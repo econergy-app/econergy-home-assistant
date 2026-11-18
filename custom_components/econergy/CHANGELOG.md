@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.12 — bêta — 18 novembre 2026
+
+### Actualisations d'état
+- Partage une même demande de statut lorsqu'une actualisation automatique et une actualisation manuelle concernent le même radiateur au même moment. La seconde action réutilise la demande en cours au lieu d'envoyer une nouvelle commande.
+- Conserve la limite Econergy d'une demande par radiateur et par minute, ainsi que la gestion des réponses HTTP 429 et de `Retry-After`.
+- Les simples reports liés au délai minimal (`RATE_LIMIT_COOLDOWN`) ne génèrent plus d'avertissement dans les journaux : ils sont consignés au niveau `DEBUG`. Les erreurs et les actualisations réellement non confirmées restent signalées.
+
+### Lisibilité des journaux
+- Remplace les identifiants seuls par le nom du radiateur, suivi de son identifiant entre parenthèses, dans les journaux du coordinateur et du thermostat.
+- Applique le même format aux erreurs de lecture des programmes, réglages, consommations, aux demandes de statut et aux modifications de programme.
+
 ## 2.1.11 — bêta — 17 novembre 2026
 
 ### Suivi des demandes d'actualisation

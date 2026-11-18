@@ -77,6 +77,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.program_locks: dict[str, asyncio.Lock] = {}
         self.status_request_cooldowns: dict[str, float] = {}
         self.status_request_last_attempt: dict[str, float] = {}
+        # Share an in-flight status refresh between the automatic loop and manual button.
+        self._status_request_tasks: dict[str, asyncio.Task] = {}
         self._status_request_limits_store = Store(
             hass, 1, f"{DOMAIN}_{entry.entry_id}_status_request_limits"
         )
@@ -111,6 +113,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not device_ids or not device_ids.isdisjoint(active_device_ids):
                 continue
 
+            device_name = str(device_entry.name_by_user or device_entry.name or "Radiateur")
+            device_label = f"{device_name} ({', '.join(sorted(device_ids))})"
+
             # Remove every Econergy entity first, including disabled entities.
             # Keep the device if another integration still has entities attached.
             stale_entities = er.async_entries_for_device(
@@ -128,7 +133,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if remaining_entities:
                 _LOGGER.warning(
                     "Ancien appareil Econergy %s conservé dans le registre : %s entité(s) d'une autre intégration restent associées",
-                    ", ".join(sorted(device_ids)),
+                    device_label,
                     len(remaining_entities),
                 )
                 continue
@@ -136,7 +141,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             device_registry.async_remove_device(device_entry.id)
             _LOGGER.info(
                 "Ancien appareil Econergy supprimé automatiquement : %s (%s entité(s) supprimée(s))",
-                ", ".join(sorted(device_ids)),
+                device_label,
                 removed_entities,
             )
 
@@ -376,7 +381,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug(
                         "Consommation Econergy invalide pour %s (%s)",
                         date_text,
-                        device_id,
+                        self.device_log_label(device_id),
                     )
 
             raw_duration = day.get("heatingSeconds")
@@ -409,7 +414,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Recorder statistics queue is temporarily unavailable.
             _LOGGER.exception(
                 "Impossible d'importer les statistiques long terme Econergy pour %s",
-                device_id,
+                self.device_log_label(device_id),
             )
 
     def record_last_command(self, device_id: str, command: dict[str, Any]) -> None:
@@ -515,16 +520,24 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 result = await self.async_request_device_status(device_id)
+                device_label = self.device_log_label(device_id)
                 if result.get("fresh"):
                     _LOGGER.debug(
                         "Actualisation automatique Econergy confirmée pour %s (updatedAt=%s)",
-                        device_id,
+                        device_label,
                         result.get("state_updated_at"),
+                    )
+                elif result.get("status") == "RATE_LIMIT_COOLDOWN":
+                    # The one-minute limit is expected protection, not an actual refresh failure.
+                    _LOGGER.debug(
+                        "Actualisation automatique Econergy reportée pour %s (%s s avant une nouvelle demande)",
+                        device_label,
+                        result.get("retry_after_seconds"),
                     )
                 else:
                     _LOGGER.warning(
                         "Actualisation automatique Econergy non confirmée pour %s (statut=%s, erreur=%s)",
-                        device_id,
+                        device_label,
                         result.get("status"),
                         result.get("error"),
                     )
@@ -533,7 +546,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception:
                 _LOGGER.exception(
                     "Échec de l'actualisation automatique Econergy pour %s",
-                    device_id,
+                    self.device_log_label(device_id),
                 )
 
             elapsed = asyncio.get_running_loop().time() - started
@@ -555,6 +568,11 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if auto_task is not None and not auto_task.done():
             auto_task.cancel()
         self._auto_status_refresh_task = None
+
+        for status_task in self._status_request_tasks.values():
+            if not status_task.done():
+                status_task.cancel()
+        self._status_request_tasks.clear()
 
     @staticmethod
     def _parse_api_timestamp(value: Any) -> datetime | None:
@@ -610,6 +628,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not device_id:
             return None, {"status": "SKIPPED", "fresh": False, "error": "Identifiant absent"}
 
+        device_label = self.device_log_label(device_id)
         loop = asyncio.get_running_loop()
         cooldown_until = self.status_request_cooldowns.get(device_id, 0.0)
         last_attempt = self.status_request_last_attempt.get(device_id, 0.0)
@@ -668,7 +687,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 })
                 _LOGGER.warning(
                     "Demande de statut Econergy limitée pour %s (Retry-After=%ss)",
-                    device_id,
+                    device_label,
                     int(retry_after),
                 )
                 return None, result
@@ -690,7 +709,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 })
                 _LOGGER.warning(
                     "Demande Econergy limitée pour %s ; suivi de la commande %s impossible : %s",
-                    device_id,
+                    device_label,
                     existing_command_id,
                     follow_error,
                 )
@@ -702,12 +721,12 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             })
             _LOGGER.info(
                 "Econergy limite une nouvelle demande pour %s ; suivi de la commande existante %s",
-                device_id,
+                device_label,
                 existing_command_id,
             )
         except EconergyApiError as err:
             result.update({"status": "ERROR", "error": str(err)})
-            _LOGGER.warning("Demande de statut Econergy impossible pour %s : %s", device_id, err)
+            _LOGGER.warning("Demande de statut Econergy impossible pour %s : %s", device_label, err)
             return None, result
 
         created_at = command.get("createdAt")
@@ -730,7 +749,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if command_status in failed_statuses:
             result.update({"status": "COMMAND_FAILED", "error": f"Commande {command_id} : {command_status}"})
-            _LOGGER.warning("Demande de statut refusée pour %s (commande=%s, statut=%s)", device_id, command_id, command_status)
+            _LOGGER.warning("Demande de statut refusée pour %s (commande=%s, statut=%s)", device_label, command_id, command_status)
             return None, result
 
         # Follow the command with GET /commands/{commandId}. ACKNOWLEDGED means
@@ -761,7 +780,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             last_command_error = None
             if command_status in failed_statuses:
                 result.update({"status": "COMMAND_FAILED", "error": f"Commande {command_id} : {command_status}"})
-                _LOGGER.warning("Demande de statut échouée pour %s (commande=%s)", device_id, command_id)
+                _LOGGER.warning("Demande de statut échouée pour %s (commande=%s)", device_label, command_id)
                 return None, result
 
         if command_status not in acknowledged_statuses:
@@ -770,7 +789,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f"La commande {command_id} n'a pas été acquittée dans le délai imparti"
                 + (f" ; dernier problème de suivi : {last_command_error}" if last_command_error else "")
             )
-            _LOGGER.warning("Suivi de la demande de statut en attente pour %s (commande=%s, statut=%s)", device_id, command_id, command_status)
+            _LOGGER.warning("Suivi de la demande de statut en attente pour %s (commande=%s, statut=%s)", device_label, command_id, command_status)
 
         # Even after the command acknowledgement, require a state timestamp later
         # than the request timestamp before calling the measurement refreshed.
@@ -806,7 +825,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._persist_status_request_limits()
                 _LOGGER.info(
                     "État Econergy actualisé pour %s (commande=%s, updatedAt=%s)",
-                    device_id,
+                    device_label,
                     command_id,
                     updated_at,
                 )
@@ -828,7 +847,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         })
         _LOGGER.warning(
             "La température Econergy de %s n'a pas été confirmée fraîche après la demande (commande=%s, updatedAt=%s)",
-            device_id,
+            device_label,
             command_id,
             result.get("state_updated_at"),
         )
@@ -935,7 +954,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.program_errors.pop(device_id, None)
             except EconergyApiError as err:
                 self.program_errors[device_id] = str(err)
-                _LOGGER.warning("Programme Econergy indisponible pour %s : %s", device_id, err)
+                _LOGGER.warning("Programme Econergy indisponible pour %s : %s", self.device_log_label(device_id), err)
         if self.data is not None:
             self.async_set_updated_data({
                 **self.data,
@@ -963,7 +982,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise
             except EconergyApiError as err:
                 self.settings_errors[device_id] = str(err)
-                _LOGGER.warning("Réglages Econergy indisponibles pour %s : %s", device_id, err)
+                _LOGGER.warning("Réglages Econergy indisponibles pour %s : %s", self.device_log_label(device_id), err)
             if index < len(devices) - 1:
                 await asyncio.sleep(0.25)
         if self.data is not None:
@@ -1002,7 +1021,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     raise
                 except EconergyApiError as err:
                     self.consumption_errors[device_id] = str(err)
-                    _LOGGER.warning("Consommation Econergy indisponible pour %s : %s", device_id, err)
+                    _LOGGER.warning("Consommation Econergy indisponible pour %s : %s", self.device_log_label(device_id), err)
                 if index < len(devices) - 1:
                     await asyncio.sleep(0.25)
 
@@ -1144,7 +1163,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         async with lock:
             _LOGGER.info(
                 "Envoi d'une modification de programme Econergy (radiateur=%s, champs=%s)",
-                device_id,
+                self.device_log_label(device_id),
                 ",".join(sorted(changes)),
             )
             result = await self.api.patch_program(device_id, changes)
@@ -1196,7 +1215,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info(
                 "Programme Econergy confirmé par relecture API (commande=%s, radiateur=%s)",
                 result.get("command_id"),
-                device_id,
+                self.device_log_label(device_id),
             )
             self.programs[device_id] = program
             self.program_errors.pop(device_id, None)
@@ -1350,10 +1369,40 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return await self.api.get_manual(device_id, lang)
 
     async def async_request_device_status(self, device_id: str) -> dict[str, Any]:
-        """Request and confirm a fresh radiator status on user demand."""
+        """Request a fresh status, reusing an in-flight request for the same radiator."""
+        device_id = str(device_id)
+        if self.find_device(device_id) is None:
+            raise ValueError("Radiateur Econergy introuvable.")
+
+        task = self._status_request_tasks.get(device_id)
+        if task is None or task.done():
+            task = self.hass.async_create_task(
+                self._async_request_device_status(device_id),
+                f"Econergy status request {device_id}",
+            )
+            self._status_request_tasks[device_id] = task
+
+            def _clear_status_task(done_task: asyncio.Task) -> None:
+                if self._status_request_tasks.get(device_id) is done_task:
+                    self._status_request_tasks.pop(device_id, None)
+
+            task.add_done_callback(_clear_status_task)
+        else:
+            _LOGGER.debug(
+                "Actualisation Econergy déjà en cours pour %s ; réutilisation de la demande existante",
+                self.device_log_label(device_id),
+            )
+
+        # A manual button press and the automatic loop share one request. Cancelling
+        # one caller must not cancel the refresh awaited by the other caller.
+        return await asyncio.shield(task)
+
+    async def _async_request_device_status(self, device_id: str) -> dict[str, Any]:
+        """Execute and publish the result of the single shared status request."""
         device = self.find_device(device_id)
         if device is None:
             raise ValueError("Radiateur Econergy introuvable.")
+
         latest, status = await self._request_and_confirm_device_status(device)
         refreshed = self._merge_status(device, latest) if latest else dict(device)
         refreshed["_ha_status_request"] = status
@@ -1397,6 +1446,21 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (device for device in self.data.get("devices", []) if str(device.get("id")) == str(device_id)),
             None,
         )
+
+    def device_log_label(self, device_id: str) -> str:
+        """Return a readable radiator name while retaining its stable API ID."""
+        device_id = str(device_id)
+        device = self.find_device(device_id)
+        if device is None:
+            device = next(
+                (
+                    item for item in (self._initial_devices or [])
+                    if str(item.get("id") or "") == device_id
+                ),
+                {},
+            )
+        name = str(device.get("name") or "Radiateur").strip() or "Radiateur"
+        return f"{name} ({device_id})"
 
     def find_program(self, device_id: str) -> dict[str, Any] | None:
         return self.programs.get(str(device_id))
