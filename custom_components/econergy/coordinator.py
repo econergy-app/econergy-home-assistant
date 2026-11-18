@@ -401,7 +401,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     _LOGGER.debug(
                         "Durée de chauffe Econergy invalide pour %s (%s)",
                         date_text,
-                        device_id,
+                        self.device_log_label(device_id),
                     )
 
         try:
