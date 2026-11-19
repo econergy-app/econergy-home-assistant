@@ -9,6 +9,9 @@
     "persistent_notification",
     "recorder"
   ],
+  "after_dependencies": [
+    "lovelace"
+  ],
   "documentation": "https://github.com/econergy-app/econergy-home-assistant#readme",
   "domain": "econergy",
   "iot_class": "cloud_polling",
