@@ -5,7 +5,7 @@
 - Prise en charge des réponses HTTP 410 `DEVICE_REPLACED` et `DEVICE_DELETED` de l'API Econergy 1.12.0.
 - Lorsqu'un radiateur est réappairé, l'intégration lit `details.replacedBy`, vérifie le nouvel identifiant dans l'inventaire et migre le registre Home Assistant.
 - Les `unique_id` des entités Econergy sont mis à jour pour suivre le nouvel identifiant. Les `entity_id` sont conservés lorsque c'est possible, sans conflit.
-- L'archive de consommation locale et le dernier statut de commande sont transférés vers le nouvel identifiant. Les statistiques long terme sont réimportées sous le nouvel identifiant ; les anciennes entrées restent dans Recorder.
+- L'archive de consommation locale est transférée vers le nouvel identifiant. Les programmes et réglages sont relus depuis l'API ; le statut d'une ancienne commande n'est pas réattribué au nouveau radiateur. Les statistiques long terme sont réimportées sous le nouvel identifiant ; les anciennes entrées restent dans Recorder.
 - Un radiateur supprimé sans remplacement est retiré du registre Home Assistant avec ses entités Econergy.
 - Les plateformes sont rechargées après une modification d'identifiant afin de reconstruire les entités à partir de l'inventaire actualisé.
 - Aucune commande de chauffage n'est automatiquement rejouée sur le nouveau radiateur.

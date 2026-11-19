@@ -258,6 +258,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _move_cached_device_id(self, old_id: str, new_id: str) -> None:
         """Move local caches and daily history to the replacement radiator ID."""
+        # Program and settings values belong to the newly paired device ID:
+        # discard the old cache so startup reads the replacement's actual config.
         for attribute in (
             "programs",
             "program_errors",
@@ -265,13 +267,19 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "settings_errors",
             "consumption_errors",
             "last_commands",
+        ):
+            getattr(self, attribute).pop(old_id, None)
+
+        # The physical radiator was just re-paired; carry over the one-minute
+        # anti-spam window, but never carry an old command status to the new ID.
+        for attribute in (
             "status_request_cooldowns",
             "status_request_last_attempt",
         ):
             cache = getattr(self, attribute)
             if old_id in cache:
-                old_value = cache.pop(old_id)
-                cache.setdefault(new_id, old_value)
+                value = cache.pop(old_id)
+                cache.setdefault(new_id, value)
 
         if old_id in self.consumption:
             old_history = self.consumption.pop(old_id)
@@ -357,7 +365,15 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         new_id,
                     )
                     return
-                new_device = {**old_device, "id": new_id}
+                new_device = {
+                    **{
+                        key: value
+                        for key, value in old_device.items()
+                        if key not in {"state", "lastSeenAt", "_ha_status_request"}
+                    },
+                    "id": new_id,
+                    "state": {},
+                }
 
             migrated = self._migrate_device_registry_entry(old_id, new_id)
             self._move_cached_device_id(old_id, new_id)
