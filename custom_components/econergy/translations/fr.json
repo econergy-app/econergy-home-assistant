@@ -35,8 +35,7 @@
   "entity": {
     "switch": {
       "force_status_refresh": {
-        "name": "Forcer l’actualisation des températures (mode debug temporaire)",
-        "description": "Conserve cette option activée tant que les radiateurs ne transmettent pas spontanément leurs changements de température. Une demande radio est envoyée à chaque radiateur toutes les cinq minutes, avec cinq secondes entre les demandes. Cette option temporaire pourra être désactivée lorsque les nouveaux firmwares assureront les remontées automatiques."
+        "name": "Forcer l’actualisation des températures (mode debug temporaire)"
       }
     }
   }

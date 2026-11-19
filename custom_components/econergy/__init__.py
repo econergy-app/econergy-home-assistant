@@ -24,6 +24,7 @@ from .oauth import async_register_oauth_implementation
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["climate", "sensor", "number", "button", "text", "switch", "binary_sensor"]
 SERVICE_SET_PROGRAM_DAY = "set_program_day"
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 _PROGRAM_PERIOD_SCHEMA = vol.Schema({
     vol.Required("start"): cv.string,
     vol.Required("end"): cv.string,

@@ -1,4 +1,9 @@
 {
+  "domain": "econergy",
+  "name": "Econergy Cloud",
+  "after_dependencies": [
+    "lovelace"
+  ],
   "codeowners": [
     "@flo1990m"
   ],
@@ -10,10 +15,8 @@
     "recorder"
   ],
   "documentation": "https://github.com/econergy-app/econergy-home-assistant#readme",
-  "domain": "econergy",
   "iot_class": "cloud_polling",
-  "name": "Econergy Cloud",
+  "issue_tracker": "https://github.com/econergy-app/econergy-home-assistant/issues",
   "requirements": [],
-  "version": "2.1.14",
-  "issue_tracker": "https://github.com/econergy-app/econergy-home-assistant/issues"
+  "version": "2.1.14"
 }
