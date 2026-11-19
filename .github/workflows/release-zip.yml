@@ -46,13 +46,28 @@ jobs:
         with:
           ref: ${{ steps.target.outputs.tag }}
 
+      - name: Verify release version and compile
+        shell: bash
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="$(python -c 'import json; print(json.load(open("custom_components/econergy/manifest.json", encoding="utf-8"))["version"])')"
+          TAG_VERSION="${TAG#v}"
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "Release tag $TAG does not match integration version $VERSION."
+            exit 1
+          fi
+          python -m compileall -q custom_components/econergy
+          echo "Preparing Econergy Cloud $VERSION"
+
       - name: Create econergy.zip
         shell: bash
         run: |
           set -euo pipefail
           cd custom_components/econergy
-          zip -r ../../econergy.zip . -x "*.pyc" "__pycache__/*" ".DS_Store"
-          cd ../..
+          zip -r "$GITHUB_WORKSPACE/econergy.zip" . -x "*.pyc" "__pycache__/*" ".DS_Store"
+          cd "$GITHUB_WORKSPACE"
           test -s econergy.zip
           unzip -l econergy.zip
 
