@@ -4,6 +4,9 @@
   "after_dependencies": [
     "lovelace"
   ],
+  "categories": [
+    "climate.thermostats_heating"
+  ],
   "codeowners": [
     "@flo1990m"
   ],
@@ -15,6 +18,7 @@
     "recorder"
   ],
   "documentation": "https://github.com/econergy-app/econergy-home-assistant#readme",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/econergy-app/econergy-home-assistant/issues",
   "requirements": [],
