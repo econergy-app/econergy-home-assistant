@@ -21,7 +21,6 @@
 - Le scope OAuth `multihome` reste demandé, en plus de `readonly` et `write`. Il ne bloque pas les comptes ne possédant qu'un domicile.
 - Mise à jour des explications d'installation : l'autorisation des domiciles se fait côté Econergy, puis chaque domicile est configuré comme une entrée Home Assistant distincte.
 - Mise à jour de `info.md` et du README pour expliquer la procédure manuelle d'ajout des domiciles de test, les conditions premium/administrateur et les limites actuelles de la bêta.
-- Préparation des liens pour le futur nom de dépôt `flo1990m/econergy-home-assistant`. Le dépôt GitHub devra être renommé manuellement avant la publication.
 
 ## Compatibilité
 

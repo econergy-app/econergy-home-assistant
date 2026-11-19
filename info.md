@@ -6,7 +6,7 @@ L'intégration prend en charge un ou plusieurs domiciles autorisés. Le scope OA
 
 Elle fournit le pilotage du chauffage, l'actualisation automatique des températures, la programmation hebdomadaire, les réglages, les capteurs de diagnostic, l'archivage des consommations journalières et la prise en charge des radiateurs réappairés ou supprimés, avec des exemples Lovelace facultatifs.
 
-Dépôt : https://github.com/flo1990m/econergy-home-assistant
+Dépôt : https://github.com/econergy-app/econergy-home-assistant
 Documentation API officielle : https://econergy-app.fr/lab/doc
 
 ## Historique et graphiques de consommation

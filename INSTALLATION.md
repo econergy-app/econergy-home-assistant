@@ -3,7 +3,7 @@
 ## Avec HACS / Marketplace
 
 1. Paramètres → Marketplace → Ajouter à partir d'un lien.
-2. Saisir `flo1990m/econergy-cloud`, sélectionner **Intégration** et valider.
+2. Saisir `econergy-app/econergy-home-assistant`, sélectionner **Intégration** et valider.
 3. Installer **Econergy Cloud** puis redémarrer Home Assistant.
 4. Ajouter l'intégration depuis Paramètres → Appareils et services et terminer l'autorisation OAuth.
 

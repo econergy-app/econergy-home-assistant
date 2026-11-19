@@ -1,7 +1,7 @@
 # Econergy Home Assistant — Econergy Cloud
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
-[![Version bêta](https://img.shields.io/badge/version-2.1.13--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-home-assistant/releases)
+[![Version bêta](https://img.shields.io/badge/version-2.1.13--b%C3%AAta-orange.svg)](https://github.com/econergy-app/econergy-home-assistant/releases)
 
 Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée en collaboration avec Econergy et basée sur l'API officielle SmartHome.
 
@@ -35,7 +35,7 @@ Le dépôt doit d'abord être ajouté comme dépôt personnalisé :
 
 1. Ouvre **Paramètres → Marketplace** dans Home Assistant.
 2. Choisis **Ajouter à partir d'un lien**.
-3. Saisis `flo1990m/econergy-home-assistant` (ou `https://github.com/flo1990m/econergy-home-assistant`).
+3. Saisis `econergy-app/econergy-home-assistant` (ou `https://github.com/econergy-app/econergy-home-assistant`).
 4. Sélectionne le type **Intégration**, puis valide.
 5. Télécharge **Econergy Cloud** et redémarre Home Assistant.
 6. Va dans **Paramètres → Appareils et services → Ajouter une intégration**, puis recherche **Econergy Cloud**.
@@ -130,7 +130,7 @@ Routes utilisées par cette version :
 
 Documentation officielle de l'API : https://econergy-app.fr/lab/doc
 
-Dépôt du projet : https://github.com/flo1990m/econergy-home-assistant
+Dépôt du projet : https://github.com/econergy-app/econergy-home-assistant
 
 ## Sécurité et confidentialité
 

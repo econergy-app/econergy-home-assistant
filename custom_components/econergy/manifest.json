@@ -9,11 +9,11 @@
     "persistent_notification",
     "recorder"
   ],
-  "documentation": "https://github.com/flo1990m/econergy-home-assistant#readme",
+  "documentation": "https://github.com/econergy-app/econergy-home-assistant#readme",
   "domain": "econergy",
   "iot_class": "cloud_polling",
   "name": "Econergy Cloud",
   "requirements": [],
   "version": "2.1.13",
-  "issue_tracker": "https://github.com/flo1990m/econergy-home-assistant/issues"
+  "issue_tracker": "https://github.com/econergy-app/econergy-home-assistant/issues"
 }
