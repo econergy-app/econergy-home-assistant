@@ -3,11 +3,11 @@
     "step": {
       "user": {
         "title": "Econergy Cloud",
-        "description": "Connect your Econergy account. A secure Econergy page will let you choose which homes to authorize. Sign-in uses OAuth 2.0 with PKCE (no client secret)."
+        "description": "Connect your Econergy account. A secure Econergy page lets you authorize one or more homes. Sign-in uses OAuth 2.0 with PKCE (no client secret)."
       },
       "select_home": {
         "title": "Choose home",
-        "description": "Select the Econergy home to link to this Home Assistant entry. You can add another entry for another authorized home.",
+        "description": "Select the Econergy home to link to this Home Assistant entry. Create a separate entry for each additional authorized home.",
         "data": {
           "home_id": "Home"
         }

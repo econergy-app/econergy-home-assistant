@@ -1,3 +1,28 @@
+## 2.1.13 — bêta — 19 novembre 2026
+
+### Prise en charge des nouveaux retours API 1.12.0
+- Traite explicitement les réponses HTTP 410 `DEVICE_REPLACED` et `DEVICE_DELETED` renvoyées par les routes d'un radiateur.
+- Lors d'un réappairage, récupère `details.replacedBy`, vérifie le nouvel appareil dans l'inventaire et migre l'identifiant du registre Home Assistant.
+- Migre les identifiants uniques des entités Econergy en conservant leurs `entity_id` lorsque cela ne crée aucun conflit ; recharge ensuite l'entrée pour reconstruire les entités avec le nouvel identifiant API.
+- Transfère l'archive locale de consommation vers le nouvel identifiant ; les programmes et réglages sont relus depuis l'API pour ne pas réutiliser un cache de l'ancien identifiant. Les statistiques long terme sont réimportées sous l'identifiant du nouveau radiateur ; les anciennes statistiques restent disponibles sous leur ancien identifiant.
+- Lorsqu'un radiateur est supprimé sans remplacement, retire ses entités et son appareil du registre Home Assistant.
+- Aucun ordre de chauffage n'est automatiquement rejoué sur le nouveau radiateur.
+
+### Synchronisation de l'inventaire
+- Avant de supprimer un ancien appareil absent de `GET /homes/{homeId}/devices`, vérifie son endpoint de statut afin de récupérer le code 410 et l'identifiant de remplacement.
+- Si la liste des domiciles et `replacedBy` ne sont pas encore cohérents, interroge directement le nouvel identifiant ; diffère la migration si le remplaçant n'est pas encore accessible.
+- Détecte également les radiateurs ajoutés au domicile et recharge les plateformes pour créer leurs entités.
+
+### Multi-domicile et informations
+- Conserve la demande OAuth des scopes `readonly write multihome`. Le scope `multihome` reste sans effet négatif pour un compte à un seul domicile.
+- Clarifie les textes de configuration : autorisation d'un ou plusieurs domiciles côté Econergy, puis une entrée Home Assistant distincte par domicile.
+- Actualise `info.md` et le README sur les conditions d'accès actuelles à la bêta : domicile premium, administrateur et ajout manuel des domiciles de test par le mainteneur.
+- Prépare les liens du dépôt sous son futur nom `econergy-home-assistant` ; le renommage GitHub du dépôt devra être effectué avant la publication de cette version.
+
+### Compatibilité
+- Le domaine `econergy`, les identifiants uniques et le parcours OAuth restent inchangés, à l'exception de la migration nécessaire lorsque l'API fournit `replacedBy`.
+- Aucun appel de commande n'est automatiquement rejoué après une réponse 410.
+
 # Changelog
 
 ## 2.1.12 — bêta — 18 novembre 2026
