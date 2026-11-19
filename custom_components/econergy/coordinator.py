@@ -489,10 +489,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         devices = await self.api.get_devices(self.home_id)
         self._initial_devices = [dict(device) for device in devices]
         known_ids = {str(device.get("id")) for device in self._initial_devices if device.get("id")}
-        # The API inventory is authoritative. Do not purge anything on an empty
-        # response, but remove stale registry entries as soon as active devices are known.
-        if known_ids:
-            self._remove_orphaned_device_registry_entries(known_ids)
+        # Do not purge old registry IDs during startup: the first coordinator
+        # refresh must probe them for API 1.12 DEVICE_REPLACED / DEVICE_DELETED
+        # before deciding whether to migrate or remove their entities.
         saved_consumption = await self._consumption_store.async_load()
         if isinstance(saved_consumption, dict):
             saved_devices = saved_consumption.get("devices") or {}
@@ -500,7 +499,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.consumption = {
                     str(device_id): dict(value)
                     for device_id, value in saved_devices.items()
-                    if str(device_id) in known_ids and isinstance(value, dict)
+                    if isinstance(value, dict)
                 }
             loaded_date = saved_consumption.get("loaded_date")
             if isinstance(loaded_date, str):
@@ -521,8 +520,6 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now_monotonic = loop.time()
             now_utc = datetime.now(timezone.utc)
             for device_id, timestamp in (saved_limits.get("last_attempts") or {}).items():
-                if str(device_id) not in known_ids:
-                    continue
                 parsed = self._parse_api_timestamp(timestamp)
                 if parsed is None:
                     continue
@@ -530,8 +527,6 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if elapsed < STATUS_REQUEST_MIN_INTERVAL_SECONDS:
                     self.status_request_last_attempt[str(device_id)] = now_monotonic - elapsed
             for device_id, timestamp in (saved_limits.get("cooldowns") or {}).items():
-                if str(device_id) not in known_ids:
-                    continue
                 parsed = self._parse_api_timestamp(timestamp)
                 if parsed is None:
                     continue
@@ -1218,6 +1213,26 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for item in (self.data or {}).get("devices", [])
             if item.get("id")
         }
+        # The API inventory no longer contains the old ID after re-pairing.
+        # Recover IDs from HA's device registry so the following status probe
+        # can retrieve replacedBy before any orphaned entities are removed.
+        device_registry = dr.async_get(self.hass)
+        for registry_device in dr.async_entries_for_config_entry(
+            device_registry, self.entry.entry_id
+        ):
+            for identifier in registry_device.identifiers:
+                if len(identifier) != 2 or identifier[0] != DOMAIN:
+                    continue
+                registry_id = str(identifier[1])
+                existing.setdefault(
+                    registry_id,
+                    {
+                        "id": registry_id,
+                        "name": registry_device.name_by_user
+                        or registry_device.name
+                        or "Radiateur",
+                    },
+                )
         inventory_ids = {str(device.get("id")) for device in devices if device.get("id")}
         unconfirmed_missing: list[dict[str, Any]] = []
 
@@ -1327,6 +1342,14 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.consumption = {key: value for key, value in self.consumption.items() if key in known_ids}
         self.consumption_errors = {key: value for key, value in self.consumption_errors.items() if key in known_ids}
         self.last_commands = {key: value for key, value in self.last_commands.items() if key in known_ids}
+        self.status_request_cooldowns = {
+            key: value for key, value in self.status_request_cooldowns.items()
+            if key in known_ids
+        }
+        self.status_request_last_attempt = {
+            key: value for key, value in self.status_request_last_attempt.items()
+            if key in known_ids
+        }
 
         _LOGGER.debug(
             "Inventaire Econergy actualisé : %s radiateur(s) listé(s) ; actualisation radio automatique gérée séparément",
