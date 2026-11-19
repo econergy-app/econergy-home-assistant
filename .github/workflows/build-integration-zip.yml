@@ -16,16 +16,23 @@ jobs:
   build:
     name: Build econergy.zip
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Verify integration version
+      - name: Read integration version and compile
+        id: version
         shell: bash
         run: |
           set -euo pipefail
           VERSION="$(python -c 'import json; print(json.load(open("custom_components/econergy/manifest.json", encoding="utf-8"))["version"])')"
-          test "$VERSION" = "2.1.14"
+          if [ -z "$VERSION" ]; then
+            echo "The integration manifest does not declare a version."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building Econergy Cloud $VERSION"
           python -m compileall -q custom_components/econergy
 
@@ -42,7 +49,7 @@ jobs:
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: econergy-2.1.14
+          name: econergy-${{ steps.version.outputs.version }}
           path: econergy.zip
           if-no-files-found: error
           retention-days: 30
