@@ -36,7 +36,6 @@
     "switch": {
       "force_status_refresh": {
         "name": "Force radiator temperature refresh (temporary debug mode)",
-        "description": "Keep this enabled while radiators do not publish their temperature changes automatically. A radio status request is sent to each radiator every five minutes, with five seconds between requests. This temporary option can be disabled after the new radiator firmware provides regular automatic reports."
       }
     }
   }
