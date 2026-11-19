@@ -3,11 +3,11 @@
     "step": {
       "user": {
         "title": "Econergy Cloud",
-        "description": "Connectez votre compte Econergy. Une page Econergy sécurisée vous permettra de choisir les domiciles à autoriser. La connexion utilise OAuth 2.0 avec PKCE (sans secret client)."
+        "description": "Connectez votre compte Econergy. La page sécurisée Econergy vous permet d'autoriser un ou plusieurs domiciles. La connexion utilise OAuth 2.0 avec PKCE (sans secret client)."
       },
       "select_home": {
         "title": "Choisir le domicile",
-        "description": "Sélectionnez le domicile Econergy à associer à cette entrée Home Assistant. Vous pourrez ajouter une autre entrée pour un autre domicile autorisé.",
+        "description": "Sélectionnez le domicile Econergy à associer à cette entrée Home Assistant. Créez une entrée distincte pour chaque autre domicile autorisé.",
         "data": {
           "home_id": "Domicile"
         }

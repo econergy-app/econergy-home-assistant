@@ -1,11 +1,11 @@
-# Econergy Cloud — Home Assistant
+# Econergy Home Assistant — Econergy Cloud
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
-[![Version bêta](https://img.shields.io/badge/version-2.1.11--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-cloud/releases)
+[![Version bêta](https://img.shields.io/badge/version-2.1.13--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-home-assistant/releases)
 
 Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera, basée sur l'API officielle Econergy Lab.
 
-> **Version bêta :** l'intégration est encore en développement et peut contenir des défauts. Projet communautaire indépendant, non affilié à Econergy et non officiellement pris en charge par le fabricant. Elle dépend de l'API cloud Econergy ; ses fonctions peuvent évoluer avec l'API.
+> **Version bêta :** l'intégration est développée en collaboration avec Econergy, mais reste en phase de test. L'accès des utilisateurs est actuellement limité aux domiciles de test ajoutés manuellement dans l'application Econergy Lab. Le domicile doit être premium et l'utilisateur doit en être administrateur. Contacte le mainteneur avant l'installation pour faire ajouter ton domicile de test.
 
 ## Fonctionnalités
 
@@ -23,17 +23,23 @@ Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera
 - Authentification OAuth 2.0 avec PKCE ; aucun mot de passe Econergy ni jeton à copier dans YAML.
 - Exemples Lovelace facultatifs : tuile de pilotage de base, état détaillé, réglages, diagnostic, actions, graphique des 15 derniers jours et statistiques sur 30 jours.
 
+## Accès bêta et prérequis
+
+L'application Econergy Lab est actuellement en mode test. Les utilisateurs ne peuvent pas encore autoriser librement leur domicile : le mainteneur doit l'ajouter à la liste des domiciles de test dans le tableau de bord Econergy Lab. Pour participer, contacte le mainteneur et communique l'identifiant de ton domicile. Tu dois en être administrateur et le domicile doit être premium (compteur Linky enregistré dans l'application Econergy). Cette étape manuelle disparaîtra lorsque Econergy aura validé et ouvert l'application à tous les utilisateurs.
+
+Le scope OAuth `multihome` est demandé pour tous les comptes. Il permet à Econergy de proposer plusieurs domiciles sur l'écran de consentement, mais ne gêne pas les utilisateurs qui n'en possèdent qu'un. Chaque domicile autorisé est ensuite configuré dans Home Assistant au moyen d'une entrée distincte.
+
 ## Installation avec HACS / Marketplace
 
 Le dépôt doit d'abord être ajouté comme dépôt personnalisé :
 
 1. Ouvre **Paramètres → Marketplace** dans Home Assistant.
 2. Choisis **Ajouter à partir d'un lien**.
-3. Saisis `flo1990m/econergy-cloud` (ou `https://github.com/flo1990m/econergy-cloud`).
+3. Saisis `flo1990m/econergy-home-assistant` (ou `https://github.com/flo1990m/econergy-home-assistant`).
 4. Sélectionne le type **Intégration**, puis valide.
 5. Télécharge **Econergy Cloud** et redémarre Home Assistant.
 6. Va dans **Paramètres → Appareils et services → Ajouter une intégration**, puis recherche **Econergy Cloud**.
-7. Termine l'autorisation Econergy dans la fenêtre OAuth. Le compte doit disposer des autorisations `readonly` et `write` ; `multihome` est demandé pour les comptes ayant plusieurs domiciles.
+7. Termine l'autorisation Econergy dans la fenêtre OAuth. L'application demande `readonly`, `write` et `multihome`. Econergy confirme que `multihome` n'a aucun effet négatif pour un compte avec un seul domicile. Pour plusieurs domiciles, sélectionne ceux que tu souhaites autoriser sur la page de consentement Econergy ; dans Home Assistant, crée une entrée distincte pour chaque domicile à piloter.
 
 Après une mise à jour HACS, redémarre Home Assistant si nécessaire. Ne supprime pas l'entrée d'intégration lors d'une mise à jour : elle contient l'autorisation OAuth.
 
@@ -93,6 +99,10 @@ hide_legend: true
 
 Pour la durée de chauffe, utilisez `econergy:68c5597e5cb480c6cc800d66_heating_duration`. Remplacez `68c5597e5cb480c6cc800d66` par l'identifiant du radiateur concerné. Les identifiants externes commencent par `econergy:` ; ils ne sont pas les `entity_id` des capteurs. Vous pouvez les retrouver dans **Paramètres → Outils de développement → Statistiques**.
 
+## Radiateurs réappairés ou supprimés
+
+Depuis l'API 1.12.0, un ancien identifiant de radiateur renvoie HTTP 410 : `DEVICE_REPLACED` avec `details.replacedBy` lorsqu'il a été réinitialisé puis appairé de nouveau, ou `DEVICE_DELETED` lorsqu'il a été retiré sans remplacement. L'intégration vérifie l'inventaire, migre l'identifiant du registre Home Assistant et les identifiants uniques de ses entités lorsque le remplacement est confirmé, puis recharge l'entrée pour reconstruire les entités. Les `entity_id` sont conservés lorsque la migration ne rencontre aucun conflit. L'archive locale de consommation est transférée vers le nouvel identifiant et les statistiques correspondantes sont réimportées. Aucun ordre de chauffage n'est rejoué automatiquement sur le nouvel appareil.
+
 ## Données et limites connues
 
 - En mode `FROST`, le thermostat affiche désormais la valeur `state.setpointC` renvoyée par l'API Econergy (7 °C selon la documentation 1.10.0), et non une valeur codée en dur.
@@ -118,7 +128,9 @@ Routes utilisées par cette version :
 - `POST /devices/{deviceId}/status-request`
 - `POST /devices/{deviceId}/commands`, `GET /commands/{commandId}`
 
-Documentation officielle : https://econergy-app.fr/lab/doc
+Documentation officielle de l'API : https://econergy-app.fr/lab/doc
+
+Dépôt du projet : https://github.com/flo1990m/econergy-home-assistant
 
 ## Sécurité et confidentialité
 

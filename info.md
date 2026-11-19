@@ -1,5 +1,13 @@
-Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera via l'API officielle Econergy Lab. Elle fournit le pilotage du chauffage, l'actualisation automatique des températures, la programmation hebdomadaire, les réglages, les capteurs de diagnostic, l'archivage des consommations journalières et la suppression sécurisée des anciens appareils, avec des exemples Lovelace facultatifs.
+Intégration Home Assistant des radiateurs Econergy / Carrera, développée en collaboration avec Econergy et basée sur l'API officielle SmartHome.
 
+**Version bêta :** l'accès reste actuellement limité aux domiciles de test ajoutés manuellement par le mainteneur dans le tableau de bord Econergy Lab. Pour demander l'accès, contacte le mainteneur et transmets l'identifiant de ton domicile. Tu dois en être administrateur et le domicile doit être premium (compteur Linky enregistré dans l'application Econergy). Cette étape sera supprimée lorsque l'application sera validée et ouverte à tous les utilisateurs.
+
+L'intégration prend en charge un ou plusieurs domiciles autorisés. Le scope OAuth `multihome` est demandé à tous les comptes ; Econergy confirme qu'il ne change rien pour un utilisateur ayant un seul domicile. Dans Home Assistant, chaque domicile est ajouté comme une entrée distincte.
+
+Elle fournit le pilotage du chauffage, l'actualisation automatique des températures, la programmation hebdomadaire, les réglages, les capteurs de diagnostic, l'archivage des consommations journalières et la prise en charge des radiateurs réappairés ou supprimés, avec des exemples Lovelace facultatifs.
+
+Dépôt : https://github.com/flo1990m/econergy-home-assistant
+Documentation API officielle : https://econergy-app.fr/lab/doc
 ## Historique et graphiques de consommation
 
 Les capteurs « Consommation estimée (dernier jour) » et « Durée de chauffe (dernier jour) » exposent uniquement la dernière journée complète renvoyée par l'API Econergy. Leur valeur est remplacée lors de la prochaine actualisation : ils ne constituent pas un historique journalier.

@@ -1246,7 +1246,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # authoritative even if the home now contains zero radiators.
         if not unconfirmed_missing and (known_ids or existing):
             self._remove_orphaned_device_registry_entries(known_ids)
-        if inventory_ids != set(existing) and not unconfirmed_missing:
+        if inventory_ids - set(existing) or (
+            set(existing) - inventory_ids and not unconfirmed_missing
+        ):
             self._schedule_device_recovery_reload()
         self.programs = {key: value for key, value in self.programs.items() if key in known_ids}
         self.program_errors = {key: value for key, value in self.program_errors.items() if key in known_ids}
