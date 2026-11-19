@@ -213,6 +213,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
         prefix = f"{DOMAIN}_{old_id}_"
+        entity_migrations: list[tuple[str, str]] = []
         for entity_entry in er.async_entries_for_device(
             entity_registry, old_entry.id, include_disabled_entities=True
         ):
@@ -229,8 +230,12 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     entity_entry.entity_id,
                 )
                 return False
+            entity_migrations.append((entity_entry.entity_id, new_unique_id))
+
+        # Validate all target IDs before changing any unique_id, avoiding partial migration.
+        for entity_id, new_unique_id in entity_migrations:
             entity_registry.async_update_entity(
-                entity_entry.entity_id,
+                entity_id,
                 new_unique_id=new_unique_id,
             )
 
@@ -278,14 +283,6 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 self.consumption[new_id] = old_history
 
-        replacement = self.find_device(new_id) or {}
-        archived_days = (self.consumption.get(new_id) or {}).get("days") or []
-        if archived_days:
-            self._import_consumption_statistics(
-                new_id,
-                str(replacement.get("name") or new_id),
-                archived_days,
-            )
         self._schedule_consumption_save()
         self._last_commands_store.async_delay_save(lambda: dict(self.last_commands), 1)
 
@@ -392,6 +389,13 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if inventory is not None:
                 self._remove_orphaned_device_registry_entries(active_ids)
+            archived_days = (self.consumption.get(new_id) or {}).get("days") or []
+            if archived_days:
+                self._import_consumption_statistics(
+                    new_id,
+                    str(new_device.get("name") or new_id),
+                    archived_days,
+                )
             self._persist_status_request_limits()
             _LOGGER.info(
                 "Radiateur Econergy réappairé : %s → %s ; identifiants Home Assistant %s",
@@ -402,7 +406,14 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._schedule_device_recovery_reload()
             return
 
-        # DEVICE_DELETED: there is no replacement to migrate to.
+        # DEVICE_DELETED: the 410 response is authoritative, even if a short-lived
+        # inventory snapshot still contains the removed radiator.
+        if inventory is not None:
+            inventory = [
+                item for item in inventory
+                if str(item.get("id") or "") != old_id
+            ]
+            active_ids.discard(old_id)
         self._remove_device_registry_entry(old_id)
         for attribute in (
             "programs",

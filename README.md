@@ -3,7 +3,7 @@
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
 [![Version bêta](https://img.shields.io/badge/version-2.1.13--b%C3%AAta-orange.svg)](https://github.com/flo1990m/econergy-home-assistant/releases)
 
-Intégration communautaire Home Assistant pour les radiateurs Econergy / Carrera, basée sur l'API officielle Econergy Lab.
+Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée en collaboration avec Econergy et basée sur l'API officielle SmartHome.
 
 > **Version bêta :** l'intégration est développée en collaboration avec Econergy, mais reste en phase de test. L'accès des utilisateurs est actuellement limité aux domiciles de test ajoutés manuellement dans l'application Econergy Lab. Le domicile doit être premium et l'utilisateur doit en être administrateur. Contacte le mainteneur avant l'installation pour faire ajouter ton domicile de test.
 

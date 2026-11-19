@@ -8,6 +8,7 @@ Elle fournit le pilotage du chauffage, l'actualisation automatique des températ
 
 Dépôt : https://github.com/flo1990m/econergy-home-assistant
 Documentation API officielle : https://econergy-app.fr/lab/doc
+
 ## Historique et graphiques de consommation
 
 Les capteurs « Consommation estimée (dernier jour) » et « Durée de chauffe (dernier jour) » exposent uniquement la dernière journée complète renvoyée par l'API Econergy. Leur valeur est remplacée lors de la prochaine actualisation : ils ne constituent pas un historique journalier.
