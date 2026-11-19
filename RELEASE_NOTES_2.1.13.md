@@ -13,7 +13,7 @@
 ## Inventaire
 
 - Avant le nettoyage d'un identifiant qui disparaît de l'inventaire, l'intégration consulte son endpoint de statut afin de recevoir les nouveaux codes 410 et l'identifiant de remplacement.
-- Si la liste des domiciles et `replacedBy` ne sont pas encore synchronisés, l'intégration interroge directement le nouvel identifiant et diffère la migration si le remplaçant n'est pas encore accessible.
+- Le nouvel identifiant `replacedBy` doit aussi être présent dans `GET /homes/{homeId}/devices`, qui reste la source de vérité ; la migration est différée tant que l'inventaire ne le contient pas.
 - Les nouveaux radiateurs ajoutés au domicile sont pris en compte après synchronisation et rechargement des plateformes.
 
 ## Multi-domicile et informations

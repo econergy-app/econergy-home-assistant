@@ -359,20 +359,15 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 None,
             )
             if new_device is None:
-                # The inventory and the 410 response can briefly be out of sync.
-                # Query the successor directly before deferring the migration.
-                try:
-                    new_device = await self.api.get_device_status(new_id)
-                except (EconergyAuthError, EconergyApiError) as replacement_error:
-                    _LOGGER.warning(
-                        "Le radiateur de remplacement %s n'est pas encore accessible ; "
-                        "migration de %s différée (%s)",
-                        new_id,
-                        self.device_log_label(old_id),
-                        replacement_error,
-                    )
-                    return
-                active_ids.add(new_id)
+                # GET /homes/{homeId}/devices is authoritative. Do not migrate
+                # to an ID that is not yet present in the selected home's inventory.
+                _LOGGER.warning(
+                    "Le remplaçant %s de %s n'est pas encore présent dans l'inventaire "
+                    "officiel du domicile ; migration différée",
+                    new_id,
+                    self.device_log_label(old_id),
+                )
+                return
 
             self._handled_gone_device_ids.add(old_id)
             migrated = self._migrate_device_registry_entry(old_id, new_id)
