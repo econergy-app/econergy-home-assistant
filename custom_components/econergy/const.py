@@ -1,7 +1,18 @@
 """Constants for Econergy Cloud."""
 
+from typing import Any
+
 DOMAIN = "econergy"
-NAME = "Econergy Cloud 2.1.13 (Bêta)"
+NAME = "Econergy Cloud 2.1.14"
+CONF_FORCE_STATUS_REFRESH = "force_status_refresh"
+
+
+def mask_identifier(value: Any) -> str:
+    """Mask an Econergy identifier while retaining its last four characters."""
+    identifier = str(value or "")
+    if len(identifier) <= 4:
+        return "*" * len(identifier)
+    return "*" * (len(identifier) - 4) + identifier[-4:]
 BASE_URL = "https://econergy-app.fr/api/smarthome/v1"
 
 # Econergy Lab public OAuth application. Public clients do not use a secret.
@@ -13,15 +24,16 @@ OAUTH_SCOPES = "readonly write multihome"
 PROGRAM_PANEL_PATH = "econergy-program"
 PROGRAM_PANEL_URL = "/econergy-program"
 
-# Read the published home inventory once per hour; this also detects removed/re-paired radiators.
-INVENTORY_POLL_INTERVAL_SECONDS = 3600
-# Target a full automatic radio status refresh cycle every five minutes, independently of inventory polling.
+# Read the home inventory and the latest values published by the cloud every ten minutes.
+INVENTORY_POLL_INTERVAL_SECONDS = 600
+# Optional forced radio refresh: one wave every five minutes.
 STATUS_REFRESH_CYCLE_SECONDS = 300
-# Econergy allows at most one status-request per radiator per minute.
+# Space individual status-request POSTs to avoid a burst against the cloud.
+STATUS_REQUEST_SPACING_SECONDS = 5
+# Verify the command and the newly published state at most twice.
+STATUS_REQUEST_CHECK_DELAYS_SECONDS = (2, 10)
+# Econergy documents at most one status-request per radiator per minute.
 STATUS_REQUEST_MIN_INTERVAL_SECONDS = 60
-STATUS_REQUEST_COMMAND_TIMEOUT_SECONDS = 40
-STATUS_REQUEST_STATE_TIMEOUT_SECONDS = 30
-STATUS_REQUEST_POLL_INTERVAL_SECONDS = 2
 STATUS_REQUEST_DEFAULT_RETRY_AFTER_SECONDS = 60
 
 DEFAULT_MANUAL_SETPOINT_C = 18.0

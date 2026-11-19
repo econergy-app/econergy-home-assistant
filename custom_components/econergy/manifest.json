@@ -18,5 +18,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/econergy-app/econergy-home-assistant/issues",
   "requirements": [],
-  "version": "2.1.13"
+  "version": "2.1.15"
 }

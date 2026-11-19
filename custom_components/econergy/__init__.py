@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
 
 from .api import EconergyApi, EconergyApiError, EconergyAuthError
-from .const import DOMAIN, WEEKDAYS
+from .const import DOMAIN, WEEKDAYS, mask_identifier
 from .coordinator import EconergyCoordinator
 from .program_helpers import validate_periods
 from .frontend import async_register_frontend
@@ -210,7 +210,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             or (entity.domain == "text" and "program" in unique_id)
             or (entity.domain == "button" and "program" in unique_id and not unique_id.endswith("_open_program"))
             or (entity.domain == "binary_sensor" and unique_id.endswith("_window_open_state"))
-            or (entity.domain == "switch" and not unique_id.endswith(("_keypadlocked", "_childprotection", "_windowdetection")))
+            or (entity.domain == "switch" and not unique_id.endswith(("_keypadlocked", "_childprotection", "_windowdetection", "_force_status_refresh")))
             or (entity.domain == "number" and not unique_id.endswith(("_ecoc", "_comfortc", "_max_setpoint_c", "_calibrationc")))
         )
         if legacy_entity:
@@ -289,7 +289,7 @@ async def async_remove_config_entry_device(
     if can_remove:
         _LOGGER.info(
             "Suppression de l'ancien appareil Econergy du registre Home Assistant : %s",
-            f"{device_entry.name_by_user or device_entry.name or 'Radiateur'} ({', '.join(sorted(device_ids))})",
+            f"{device_entry.name_by_user or device_entry.name or 'Radiateur'} ({', '.join(mask_identifier(value) for value in sorted(device_ids))})",
         )
     return can_remove
 
@@ -297,6 +297,10 @@ async def async_remove_config_entry_device(
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+        coordinator = entry_data.get("coordinator") if isinstance(entry_data, dict) else None
+        if coordinator is not None:
+            coordinator.async_stop_deferred_initialization()
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         if not hass.data.get(DOMAIN):
             hass.services.async_remove(DOMAIN, SERVICE_SET_PROGRAM_DAY)

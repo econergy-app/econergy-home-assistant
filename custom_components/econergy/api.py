@@ -23,6 +23,7 @@ from .const import (
     STATE_CONFIRM_TIMEOUT_SECONDS,
     SUPPORTED_MODES,
     WEEKDAYS,
+    mask_identifier,
 )
 from .program_helpers import validate_periods
 
@@ -241,7 +242,7 @@ class EconergyApi:
                             except Exception:
                                 _LOGGER.exception(
                                     "Impossible de traiter la disparition du radiateur Econergy %s",
-                                    device_id,
+                                    mask_identifier(device_id),
                                 )
                     raise api_error
 

@@ -20,6 +20,7 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
         device_id = str(device.get("id") or "")
         if device_id:
             entities.extend([
+                EconergyForcedTemperatureRefreshSwitch(coordinator, device),
                 EconergyDocumentedSettingSwitch(coordinator, device, "keypadLocked"),
                 EconergyDocumentedSettingSwitch(coordinator, device, "childProtection"),
                 EconergyDocumentedSettingSwitch(coordinator, device, "windowDetection"),
@@ -113,3 +114,54 @@ class EconergyDocumentedSettingSwitch(CoordinatorEntity, SwitchEntity):
         except Exception as err:
             raise HomeAssistantError(f"Modification de {self._attr_name.lower()} impossible : {err}") from err
         self.async_write_ha_state()
+
+
+
+class EconergyForcedTemperatureRefreshSwitch(CoordinatorEntity, SwitchEntity):
+    """Home-wide forced temperature refresh, shown in each radiator diagnostics."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "force_status_refresh"
+    _attr_icon = "mdi:thermometer-auto"
+
+    def __init__(self, coordinator: EconergyCoordinator, device: dict[str, Any]) -> None:
+        super().__init__(coordinator)
+        self._device_id = str(device["id"])
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_force_status_refresh"
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.force_status_refresh_enabled
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "portee": "Tous les radiateurs de ce domicile",
+            "frequence": "5 minutes par radiateur",
+            "espacement": "5 secondes entre les demandes",
+            "verification": "2 puis 10 secondes",
+            "description": (
+                "Option temporaire : force le réveil radio des radiateurs tant que "
+                "les firmwares ne publient pas spontanément leurs températures."
+            ),
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        device = self.coordinator.find_device(self._device_id) or {}
+        info = device.get("info") or {}
+        firmware = info.get("firmware") or {}
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=f"Econergy {device.get('name') or 'Radiateur'}",
+            manufacturer="Econergy / Carrera",
+            model=str(info.get("reference") or "Radiateur connecté"),
+            sw_version=str(firmware.get("version")) if firmware.get("version") else None,
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_force_status_refresh(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_force_status_refresh(False)
