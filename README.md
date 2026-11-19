@@ -88,7 +88,7 @@ Pour représenter chaque journée, utilisez une carte manuelle **Graphique des s
 type: statistics-graph
 title: Consommation estimée — 30 derniers jours
 entities:
-  - econergy:68c5597e5cb480c6cc800d66_estimated_consumption
+  - econergy:68c5597e5cb480xxxxxxxxxxxxxxxxxxx_estimated_consumption
 period: day
 days_to_show: 30
 chart_type: bar
