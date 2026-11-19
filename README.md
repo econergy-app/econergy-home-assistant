@@ -1,11 +1,9 @@
 # Econergy Home Assistant — Econergy Cloud
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://www.hacs.xyz/)
-[![Version bêta](https://img.shields.io/badge/version-2.1.13--b%C3%AAta-orange.svg)](https://github.com/econergy-app/econergy-home-assistant/releases)
+[![Version](https://img.shields.io/badge/version-2.1.14-blue.svg)](https://github.com/econergy-app/econergy-home-assistant/releases)
 
 Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée en collaboration avec Econergy et basée sur l'API officielle SmartHome.
-
-> **Version bêta :** l'intégration est développée en collaboration avec Econergy, mais reste en phase de test. L'accès des utilisateurs est actuellement limité aux domiciles de test ajoutés manuellement dans l'application Econergy Lab. Le domicile doit être premium et l'utilisateur doit en être administrateur. Contacte le mainteneur avant l'installation pour faire ajouter ton domicile de test.
 
 ## Fonctionnalités
 
@@ -14,7 +12,9 @@ Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée
 - Programmation hebdomadaire avec un éditeur en français : sept jours, jusqu'à trois plages Confort par jour, consignes Éco/Confort et copie des réglages entre jours. L'activation du mode Programmation reste gérée depuis le pilotage du radiateur.
 - Réglages : butée de température max, protection enfant, verrouillage du clavier, activation/désactivation de la détection de fenêtre ouverte et correction manuelle de la sonde (−8 à +8 °C).
 - Capteurs : température ambiante, puissance nominale, firmware, date d'installation, dernière communication, dernière remontée d'état, régime appliqué, état de chauffe, détection de fenêtre ouverte et consommation estimée.
-- Actualisation automatique des températures par demande de statut radio, avec un cycle cible d'environ cinq minutes par radiateur et un espacement minimal de 60 secondes entre demandes.
+- Lecture groupée des derniers états publiés par le cloud toutes les dix minutes, sans réveil radio individuel.
+- Actualisation forcée des températures activée par défaut : une vague radio toutes les cinq minutes, avec cinq secondes entre chaque demande. L'interrupteur est visible dans la section « Diagnostics » de chaque radiateur ; il commande le fonctionnement global du domicile et pourra être désactivé après le déploiement des nouveaux firmwares Econergy.
+- Notification persistante Home Assistant lorsqu'une nouvelle version de firmware est détectée sur un radiateur.
 - Actions : actualisation combinée manuelle de l'état et de la consommation, renommage du radiateur et récupération de la notice PDF via l'API Econergy. Si aucun PDF n'est publié (`MANUAL_NOT_FOUND`), une notification informative s'affiche sans erreur de service.
 - Contrôle de l'inventaire Econergy une fois par heure ; suppression automatique des anciens appareils et de leurs entités Home Assistant lorsque leurs identifiants ne sont plus renvoyés par l'API, dès le démarrage puis à chaque synchronisation horaire.
 - Archivage durable des relevés journaliers de consommation estimée et de durée de chauffe, avec import dans les statistiques long terme de Home Assistant.
@@ -23,11 +23,9 @@ Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée
 - Authentification OAuth 2.0 avec PKCE ; aucun mot de passe Econergy ni jeton à copier dans YAML.
 - Exemples Lovelace facultatifs : tuile de pilotage de base, état détaillé, réglages, diagnostic, actions, graphique des 15 derniers jours et statistiques sur 30 jours.
 
-## Accès bêta et prérequis
+## Accès et domiciles
 
-L'application Econergy Lab est actuellement en mode test. Les utilisateurs ne peuvent pas encore autoriser librement leur domicile : le mainteneur doit l'ajouter à la liste des domiciles de test dans le tableau de bord Econergy Lab. Pour participer, contacte le mainteneur et communique l'identifiant de ton domicile. Tu dois en être administrateur et le domicile doit être premium (compteur Linky enregistré dans l'application Econergy). Cette étape manuelle disparaîtra lorsque Econergy aura validé et ouvert l'application à tous les utilisateurs.
-
-Le scope OAuth `multihome` est demandé pour tous les comptes. Il permet à Econergy de proposer plusieurs domiciles sur l'écran de consentement, mais ne gêne pas les utilisateurs qui n'en possèdent qu'un. Chaque domicile autorisé est ensuite configuré dans Home Assistant au moyen d'une entrée distincte.
+Connecte ton compte Econergy et autorise le ou les domiciles souhaités sur la page sécurisée Econergy. Dans Home Assistant, chaque domicile autorisé est configuré comme une entrée distincte.
 
 ## Installation avec HACS / Marketplace
 
@@ -111,7 +109,7 @@ Depuis l'API 1.12.0, un ancien identifiant de radiateur renvoie HTTP 410 : `DEVI
 - Le code `HOME_SUSPENDED` signifie que le pilotage du domicile est suspendu par Econergy : les lectures restent disponibles, mais les commandes et modifications sont refusées.
 - La notice est demandée à l'API via `GET /devices/{deviceId}/manual?lang=fr`. Si un lien HTTPS est disponible, il est proposé dans une notification. Si l'API renvoie `MANUAL_NOT_FOUND` ou ne fournit aucun lien PDF, une notification indique que la notice n'est pas disponible ; les autres erreurs API restent signalées.
 - L'endpoint de consommation utilisé par l'intégration retourne les 15 dernières journées complètes, mais l'intégration les archive durablement dans Home Assistant et alimente ses statistiques long terme. Les valeurs restent des estimations calculées à partir de la durée de chauffe et de la puissance nominale ; ce ne sont pas des relevés Linky ni des mesures électriques directes. Lorsqu'une journée est renvoyée sans mesure (`null`), la tuile affiche `0` par convention, tandis que l'archive conserve l'absence de donnée.
-- L'inventaire cloud (GET /homes/{homeId}/devices) est contrôlé une fois par heure. Indépendamment, l'intégration demande une nouvelle remontée d'état radio toutes les cinq minutes environ par radiateur : avec quatre radiateurs, une demande est espacée d'environ 75 secondes. Le délai minimal de 60 secondes par radiateur, la persistance des dernières demandes et le respect des réponses 429/Retry-After sont conservés. Ce cycle actualise les températures et les états sans attendre le prochain contrôle de l'inventaire. Le bouton « Actualiser les infos » reste disponible pour forcer une demande manuelle.
+- L'inventaire cloud (`GET /homes/{homeId}/devices`), qui contient les dernières températures connues, est lu toutes les dix minutes. L'interrupteur « Actualisation forcée des températures » est activé par défaut et apparaît dans la section « Diagnostics » de chaque radiateur ; il commande le cycle radio de tout le domicile. Lorsqu'il est activé, l'intégration lance une vague toutes les cinq minutes, en espaçant les demandes de cinq secondes. Une demande automatique est ignorée si `state.updatedAt` date de moins de cinq minutes. Le suivi de chaque demande est limité à deux vérifications, vers 2 puis 10 secondes, et le délai minimum d'une minute par radiateur ainsi que les réponses 429/`Retry-After` sont respectés. Le bouton « Actualiser les infos » reste indépendant de l'interrupteur et effectue sa propre demande radio après le délai minimum.
 - Les scénarios, configurations avancées, gestion des membres et les commandes de présence/absence ne sont pas exposés par les routes publiques actuellement utilisées/documentées par cette version ; ils ne sont pas simulés par l'intégration.
 
 ## API utilisée
@@ -138,6 +136,7 @@ Dépôt du projet : https://github.com/econergy-app/econergy-home-assistant
 - Les jetons sont stockés dans l'entrée Home Assistant et ne doivent jamais être publiés dans une issue ou un journal.
 - Les diagnostics Home Assistant retirent les données d'authentification.
 - Ne partage jamais de capture contenant des jetons, codes OAuth ou identifiants de compte.
+- Les diagnostics et journaux masquent partiellement les identifiants de domicile et de radiateur, en conservant leurs quatre derniers caractères.
 
 ## Signaler un problème
 
