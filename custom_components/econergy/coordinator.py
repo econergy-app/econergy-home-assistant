@@ -88,6 +88,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._auto_status_refresh_task: asyncio.Task | None = None
         self._startup_unsubscribe: Callable[[], None] | None = None
         self._device_recovery_reload_task: asyncio.Task | None = None
+        self._handled_gone_device_ids: set[str] = set()
         self.api.set_device_gone_callback(self._async_handle_device_gone)
         super().__init__(
             hass,
@@ -375,6 +376,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "state": {},
                 }
 
+            self._handled_gone_device_ids.add(old_id)
             migrated = self._migrate_device_registry_entry(old_id, new_id)
             self._move_cached_device_id(old_id, new_id)
 
@@ -430,6 +432,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if str(item.get("id") or "") != old_id
             ]
             active_ids.discard(old_id)
+        self._handled_gone_device_ids.add(old_id)
         self._remove_device_registry_entry(old_id)
         for attribute in (
             "programs",
@@ -1236,6 +1239,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         or str(replacement_id) not in inventory_ids
                     )
                 )
+                if missing_error.code == "DEVICE_NOT_FOUND":
+                    self._handled_gone_device_ids.add(missing_id)
                 if missing_error.code not in {
                     "DEVICE_REPLACED",
                     "DEVICE_DELETED",
@@ -1251,6 +1256,38 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Keep a device temporarily if the inventory omitted it but the
                 # direct endpoint still returns it; the next hourly sync retries.
                 unconfirmed_missing.append(existing[missing_id])
+
+        # A 410 callback (or a confirmed 404) may have changed the current
+        # device identity while this inventory snapshot was being processed.
+        handled_gone_ids = set(self._handled_gone_device_ids)
+        self._handled_gone_device_ids.difference_update(handled_gone_ids)
+        if handled_gone_ids:
+            devices = [
+                item for item in devices
+                if str(item.get("id") or "") not in handled_gone_ids
+            ]
+            inventory_ids = {
+                str(item.get("id")) for item in devices if item.get("id")
+            }
+            unconfirmed_missing = [
+                item for item in unconfirmed_missing
+                if str(item.get("id") or "") not in handled_gone_ids
+            ]
+
+        # Use the latest coordinator snapshot: the 410 callback may already
+        # have inserted the replacement ID after the inventory GET started.
+        latest_devices = {
+            str(item.get("id")): item
+            for item in (self.data or {}).get("devices", [])
+            if item.get("id") and str(item.get("id")) not in handled_gone_ids
+        }
+        existing = latest_devices
+        for cached_id, cached_device in latest_devices.items():
+            if cached_id not in inventory_ids and all(
+                str(item.get("id") or "") != cached_id
+                for item in unconfirmed_missing
+            ):
+                unconfirmed_missing.append(cached_device)
 
         refreshed_devices: list[dict[str, Any]] = []
         for device in devices:
@@ -1277,7 +1314,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.update_interval = timedelta(seconds=INVENTORY_POLL_INTERVAL_SECONDS)
         known_ids = {str(device.get("id")) for device in refreshed_devices if device.get("id")}
-        # A successful inventory and a confirmed missing-device response are
+        # A successful inventory and confirmed missing-device responses are
         # authoritative even if the home now contains zero radiators.
         if not unconfirmed_missing and (known_ids or existing):
             self._remove_orphaned_device_registry_entries(known_ids)
