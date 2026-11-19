@@ -105,6 +105,13 @@ class EconergyApi:
         self._token = token.strip() if token else None
         self._oauth_session = oauth_session
         self.api_version: str | None = None
+        self._device_gone_callback: Callable[[str, EconergyApiError], Any] | None = None
+
+    def set_device_gone_callback(
+        self, callback: Callable[[str, EconergyApiError], Any] | None
+    ) -> None:
+        """Register the coordinator callback for DEVICE_REPLACED / DEVICE_DELETED."""
+        self._device_gone_callback = callback
 
     async def _request(
         self,
@@ -212,12 +219,31 @@ class EconergyApi:
                     message = error_message
                     if response.status == 403:
                         message = f"Accès refusé ({error_code}) : {message}"
-                    raise EconergyApiError(
+                    api_error = EconergyApiError(
                         f"{error_code} : {message}",
                         status_code=response.status,
                         code=error_code,
                         details=details,
                     )
+                    if response.status == 410 and error_code in {
+                        "DEVICE_REPLACED",
+                        "DEVICE_DELETED",
+                    }:
+                        path_parts = path.strip("/").split("/")
+                        device_id = (
+                            path_parts[1]
+                            if len(path_parts) >= 2 and path_parts[0] == "devices"
+                            else None
+                        )
+                        if device_id and self._device_gone_callback is not None:
+                            try:
+                                await self._device_gone_callback(device_id, api_error)
+                            except Exception:
+                                _LOGGER.exception(
+                                    "Impossible de traiter la disparition du radiateur Econergy %s",
+                                    device_id,
+                                )
+                    raise api_error
 
         except OAuth2TokenRequestReauthError as err:
             raise EconergyAuthError(

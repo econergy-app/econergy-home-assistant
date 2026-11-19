@@ -87,6 +87,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._startup_task: asyncio.Task | None = None
         self._auto_status_refresh_task: asyncio.Task | None = None
         self._startup_unsubscribe: Callable[[], None] | None = None
+        self._device_recovery_reload_task: asyncio.Task | None = None
+        self.api.set_device_gone_callback(self._async_handle_device_gone)
         super().__init__(
             hass,
             _LOGGER,
@@ -144,6 +146,315 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 device_label,
                 removed_entities,
             )
+
+
+    def _remove_device_registry_entry(self, device_id: str) -> None:
+        """Remove one confirmed-deleted radiator and its Econergy entities."""
+        device_registry = dr.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
+        identifier = (DOMAIN, str(device_id))
+
+        for device_entry in dr.async_entries_for_config_entry(
+            device_registry, self.entry.entry_id
+        ):
+            if identifier not in device_entry.identifiers:
+                continue
+
+            for entity_entry in er.async_entries_for_device(
+                entity_registry, device_entry.id, include_disabled_entities=True
+            ):
+                if entity_entry.platform == DOMAIN:
+                    entity_registry.async_remove(entity_entry.entity_id)
+
+            remaining = er.async_entries_for_device(
+                entity_registry, device_entry.id, include_disabled_entities=True
+            )
+            if not remaining:
+                device_registry.async_remove_device(device_entry.id)
+            else:
+                _LOGGER.warning(
+                    "Appareil Econergy %s conservé : %s entité(s) d'une autre intégration restent associées",
+                    device_id,
+                    len(remaining),
+                )
+            return
+
+    def _migrate_device_registry_entry(self, old_id: str, new_id: str) -> bool:
+        """Move a device registry identifier and its entity unique IDs to replacedBy."""
+        device_registry = dr.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
+        old_identifier = (DOMAIN, old_id)
+        new_identifier = (DOMAIN, new_id)
+
+        entries = dr.async_entries_for_config_entry(
+            device_registry, self.entry.entry_id
+        )
+        old_entry = next(
+            (item for item in entries if old_identifier in item.identifiers),
+            None,
+        )
+        if old_entry is None:
+            return True
+
+        existing_new_entry = next(
+            (
+                item for item in entries
+                if new_identifier in item.identifiers and item.id != old_entry.id
+            ),
+            None,
+        )
+        if existing_new_entry is not None:
+            _LOGGER.warning(
+                "Le nouveau radiateur Econergy %s possède déjà une fiche Home Assistant ; "
+                "l'ancienne fiche %s sera nettoyée sans fusion automatique",
+                new_id,
+                old_id,
+            )
+            return False
+
+        prefix = f"{DOMAIN}_{old_id}_"
+        for entity_entry in er.async_entries_for_device(
+            entity_registry, old_entry.id, include_disabled_entities=True
+        ):
+            if entity_entry.platform != DOMAIN or not entity_entry.unique_id.startswith(prefix):
+                continue
+            new_unique_id = f"{DOMAIN}_{new_id}_{entity_entry.unique_id[len(prefix):]}"
+            conflicting_entity_id = entity_registry.async_get_entity_id(
+                entity_entry.domain, DOMAIN, new_unique_id
+            )
+            if conflicting_entity_id and conflicting_entity_id != entity_entry.entity_id:
+                _LOGGER.warning(
+                    "Impossible de conserver l'identifiant de l'entité %s après réappairage : "
+                    "le nouvel identifiant unique existe déjà",
+                    entity_entry.entity_id,
+                )
+                return False
+            entity_registry.async_update_entity(
+                entity_entry.entity_id,
+                new_unique_id=new_unique_id,
+            )
+
+        identifiers = set(old_entry.identifiers)
+        identifiers.discard(old_identifier)
+        identifiers.add(new_identifier)
+        try:
+            device_registry.async_update_device(
+                old_entry.id,
+                new_identifiers=identifiers,
+            )
+        except (TypeError, ValueError):
+            _LOGGER.exception(
+                "Impossible de migrer la fiche Home Assistant du radiateur %s vers %s",
+                old_id,
+                new_id,
+            )
+            return False
+        return True
+
+    def _move_cached_device_id(self, old_id: str, new_id: str) -> None:
+        """Move local caches and daily history to the replacement radiator ID."""
+        for attribute in (
+            "programs",
+            "program_errors",
+            "settings",
+            "settings_errors",
+            "consumption_errors",
+            "last_commands",
+            "status_request_cooldowns",
+            "status_request_last_attempt",
+        ):
+            cache = getattr(self, attribute)
+            if old_id in cache:
+                old_value = cache.pop(old_id)
+                cache.setdefault(new_id, old_value)
+
+        if old_id in self.consumption:
+            old_history = self.consumption.pop(old_id)
+            if new_id in self.consumption:
+                self.consumption[new_id] = self._merge_consumption_history(
+                    old_history,
+                    self.consumption[new_id],
+                )
+            else:
+                self.consumption[new_id] = old_history
+
+        replacement = self.find_device(new_id) or {}
+        archived_days = (self.consumption.get(new_id) or {}).get("days") or []
+        if archived_days:
+            self._import_consumption_statistics(
+                new_id,
+                str(replacement.get("name") or new_id),
+                archived_days,
+            )
+        self._schedule_consumption_save()
+        self._last_commands_store.async_delay_save(lambda: dict(self.last_commands), 1)
+
+    def _schedule_device_recovery_reload(self) -> None:
+        """Reload platforms after an ID change so all entity objects use the new ID."""
+        task = self._device_recovery_reload_task
+        if task is not None and not task.done():
+            return
+        self._device_recovery_reload_task = self.hass.async_create_background_task(
+            self._async_reload_after_device_recovery(),
+            f"Econergy reload after radiator replacement {self.home_id}",
+        )
+
+    async def _async_reload_after_device_recovery(self) -> None:
+        await asyncio.sleep(1)
+        if not self.hass.is_stopping:
+            await self.hass.config_entries.async_reload(self.entry.entry_id)
+
+    async def _async_handle_device_gone(
+        self, old_id: str, error: EconergyApiError
+    ) -> None:
+        """Apply the API 1.12.0 DEVICE_REPLACED / DEVICE_DELETED contract."""
+        old_id = str(old_id)
+        if error.code not in {"DEVICE_REPLACED", "DEVICE_DELETED"}:
+            return
+
+        inventory: list[dict[str, Any]] | None
+        try:
+            inventory = await self.api.get_devices(self.home_id)
+        except (EconergyAuthError, EconergyApiError) as inventory_error:
+            inventory = None
+            _LOGGER.warning(
+                "Impossible de relire l'inventaire après %s pour le radiateur %s : %s",
+                error.code,
+                self.device_log_label(old_id),
+                inventory_error,
+            )
+
+        active_ids = {
+            str(item.get("id"))
+            for item in (inventory or [])
+            if item.get("id")
+        }
+
+        if error.code == "DEVICE_REPLACED":
+            replacement_id = error.details.get("replacedBy")
+            if not replacement_id:
+                _LOGGER.warning(
+                    "Econergy indique un réappairage de %s sans identifiant de remplacement ; "
+                    "l'inventaire sera resynchronisé",
+                    self.device_log_label(old_id),
+                )
+                return
+
+            new_id = str(replacement_id)
+            old_device = self.find_device(old_id) or next(
+                (
+                    item for item in (self._initial_devices or [])
+                    if str(item.get("id") or "") == old_id
+                ),
+                {},
+            )
+            new_device = next(
+                (item for item in (inventory or []) if str(item.get("id")) == new_id),
+                None,
+            )
+            if new_device is None:
+                if inventory is not None:
+                    _LOGGER.warning(
+                        "Le radiateur de remplacement %s n'est pas encore présent dans l'inventaire "
+                        "du domicile ; migration différée",
+                        new_id,
+                    )
+                    return
+                new_device = {**old_device, "id": new_id}
+
+            migrated = self._migrate_device_registry_entry(old_id, new_id)
+            self._move_cached_device_id(old_id, new_id)
+
+            if self.data is not None:
+                current_devices = [
+                    item for item in self.data.get("devices", [])
+                    if str(item.get("id") or "") not in {old_id, new_id}
+                ]
+                current_devices.append(dict(new_device))
+                self.async_set_updated_data({
+                    **self.data,
+                    "devices": current_devices,
+                    "programs": dict(self.programs),
+                    "program_errors": dict(self.program_errors),
+                    "settings": dict(self.settings),
+                    "settings_errors": dict(self.settings_errors),
+                    "consumption": dict(self.consumption),
+                    "consumption_errors": dict(self.consumption_errors),
+                    "last_commands": dict(self.last_commands),
+                })
+            else:
+                initial = [
+                    item for item in (self._initial_devices or [])
+                    if str(item.get("id") or "") not in {old_id, new_id}
+                ]
+                initial.append(dict(new_device))
+                self._initial_devices = initial
+
+            if inventory is not None:
+                self._remove_orphaned_device_registry_entries(active_ids)
+            self._persist_status_request_limits()
+            _LOGGER.info(
+                "Radiateur Econergy réappairé : %s → %s ; identifiants Home Assistant %s",
+                old_id,
+                new_id,
+                "conservés" if migrated else "à recréer",
+            )
+            self._schedule_device_recovery_reload()
+            return
+
+        # DEVICE_DELETED: there is no replacement to migrate to.
+        self._remove_device_registry_entry(old_id)
+        for attribute in (
+            "programs",
+            "program_errors",
+            "settings",
+            "settings_errors",
+            "consumption",
+            "consumption_errors",
+            "last_commands",
+            "status_request_cooldowns",
+            "status_request_last_attempt",
+        ):
+            getattr(self, attribute).pop(old_id, None)
+
+        if self.data is not None:
+            current_devices = [
+                item for item in self.data.get("devices", [])
+                if str(item.get("id") or "") != old_id
+            ]
+            if inventory is not None:
+                current_devices = [
+                    item for item in current_devices
+                    if str(item.get("id") or "") in active_ids
+                ]
+                for item in inventory:
+                    if not any(str(existing.get("id")) == str(item.get("id")) for existing in current_devices):
+                        current_devices.append(dict(item))
+            self.async_set_updated_data({
+                **self.data,
+                "devices": current_devices,
+                "programs": dict(self.programs),
+                "program_errors": dict(self.program_errors),
+                "settings": dict(self.settings),
+                "settings_errors": dict(self.settings_errors),
+                "consumption": dict(self.consumption),
+                "consumption_errors": dict(self.consumption_errors),
+                "last_commands": dict(self.last_commands),
+            })
+        elif self._initial_devices is not None:
+            self._initial_devices = [
+                item for item in self._initial_devices
+                if str(item.get("id") or "") != old_id
+            ]
+
+        self._schedule_consumption_save()
+        self._last_commands_store.async_delay_save(lambda: dict(self.last_commands), 1)
+        self._persist_status_request_limits()
+        _LOGGER.info(
+            "Radiateur Econergy supprimé du domicile : %s (DEVICE_DELETED)",
+            self.device_log_label(old_id),
+        )
+        self._schedule_device_recovery_reload()
 
     async def async_initialize(self) -> None:
         """Fetch the device inventory only; defer status commands and programs."""
@@ -879,6 +1190,33 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for item in (self.data or {}).get("devices", [])
             if item.get("id")
         }
+        inventory_ids = {str(device.get("id")) for device in devices if device.get("id")}
+        unconfirmed_missing: list[dict[str, Any]] = []
+
+        # API 1.12 returns a 410 with replacedBy for re-paired radiators. Probe
+        # missing IDs before registry cleanup so that this mapping is not lost.
+        for missing_id in sorted(set(existing) - inventory_ids):
+            try:
+                await self.api.get_device_status(missing_id)
+            except EconergyAuthError:
+                raise
+            except EconergyApiError as missing_error:
+                if missing_error.code not in {
+                    "DEVICE_REPLACED",
+                    "DEVICE_DELETED",
+                    "DEVICE_NOT_FOUND",
+                }:
+                    unconfirmed_missing.append(existing[missing_id])
+                    _LOGGER.debug(
+                        "Inventaire Econergy : vérification de l'ancien radiateur %s différée (%s)",
+                        self.device_log_label(missing_id),
+                        missing_error,
+                    )
+            else:
+                # Keep a device temporarily if the inventory omitted it but the
+                # direct endpoint still returns it; the next hourly sync retries.
+                unconfirmed_missing.append(existing[missing_id])
+
         refreshed_devices: list[dict[str, Any]] = []
         for device in devices:
             device_id = str(device.get("id") or "")
@@ -897,10 +1235,19 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             refreshed_devices.append(merged)
 
+        for stale_device in unconfirmed_missing:
+            stale_id = str(stale_device.get("id") or "")
+            if stale_id and all(str(item.get("id")) != stale_id for item in refreshed_devices):
+                refreshed_devices.append(stale_device)
+
         self.update_interval = timedelta(seconds=INVENTORY_POLL_INTERVAL_SECONDS)
         known_ids = {str(device.get("id")) for device in refreshed_devices if device.get("id")}
-        if known_ids:
+        # A successful inventory and a confirmed missing-device response are
+        # authoritative even if the home now contains zero radiators.
+        if not unconfirmed_missing and (known_ids or existing):
             self._remove_orphaned_device_registry_entries(known_ids)
+        if inventory_ids != set(existing) and not unconfirmed_missing:
+            self._schedule_device_recovery_reload()
         self.programs = {key: value for key, value in self.programs.items() if key in known_ids}
         self.program_errors = {key: value for key, value in self.program_errors.items() if key in known_ids}
         self.settings = {key: value for key, value in self.settings.items() if key in known_ids}
