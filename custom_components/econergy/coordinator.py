@@ -1212,11 +1212,19 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except EconergyAuthError:
                 raise
             except EconergyApiError as missing_error:
+                replacement_id = missing_error.details.get("replacedBy")
+                replacement_pending = (
+                    missing_error.code == "DEVICE_REPLACED"
+                    and (
+                        not replacement_id
+                        or str(replacement_id) not in inventory_ids
+                    )
+                )
                 if missing_error.code not in {
                     "DEVICE_REPLACED",
                     "DEVICE_DELETED",
                     "DEVICE_NOT_FOUND",
-                }:
+                } or replacement_pending:
                     unconfirmed_missing.append(existing[missing_id])
                     _LOGGER.debug(
                         "Inventaire Econergy : vérification de l'ancien radiateur %s différée (%s)",
