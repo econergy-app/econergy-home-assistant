@@ -13,7 +13,7 @@
 ## Inventaire
 
 - Avant le nettoyage d'un identifiant qui disparaît de l'inventaire, l'intégration consulte son endpoint de statut afin de recevoir les nouveaux codes 410 et l'identifiant de remplacement.
-- Les erreurs réseau ou les réponses encore accessibles diffèrent le nettoyage plutôt que de supprimer prématurément un appareil.
+- Si la liste des domiciles et `replacedBy` ne sont pas encore synchronisés, l'intégration interroge directement le nouvel identifiant et diffère la migration si le remplaçant n'est pas encore accessible.
 - Les nouveaux radiateurs ajoutés au domicile sont pris en compte après synchronisation et rechargement des plateformes.
 
 ## Multi-domicile et informations

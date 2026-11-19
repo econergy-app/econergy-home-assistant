@@ -10,7 +10,7 @@
 
 ### Synchronisation de l'inventaire
 - Avant de supprimer un ancien appareil absent de `GET /homes/{homeId}/devices`, vérifie son endpoint de statut afin de récupérer le code 410 et l'identifiant de remplacement.
-- Si l'endpoint direct reste temporairement accessible ou renvoie une erreur réseau, diffère le nettoyage plutôt que de supprimer prématurément l'appareil.
+- Si la liste des domiciles et `replacedBy` ne sont pas encore cohérents, interroge directement le nouvel identifiant ; diffère la migration si le remplaçant n'est pas encore accessible.
 - Détecte également les radiateurs ajoutés au domicile et recharge les plateformes pour créer leurs entités.
 
 ### Multi-domicile et informations
