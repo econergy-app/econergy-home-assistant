@@ -27,21 +27,31 @@ Intégration Home Assistant pour les radiateurs Econergy / Carrera, développée
 
 Connecte ton compte Econergy et autorise le ou les domiciles souhaités sur la page sécurisée Econergy. Dans Home Assistant, chaque domicile autorisé est configuré comme une entrée distincte.
 
-## Installation avec HACS / Marketplace
+## Installation avec HACS (recommandée)
 
-Le dépôt doit d'abord être ajouté comme dépôt personnalisé :
+Econergy Cloud est disponible directement dans le catalogue officiel HACS : il n'est plus nécessaire d'ajouter le dépôt comme dépôt personnalisé.
 
-1. Ouvre **Paramètres → Marketplace** dans Home Assistant.
-2. Choisis **Ajouter à partir d'un lien**.
-3. Saisis `econergy-app/econergy-home-assistant` (ou `https://github.com/econergy-app/econergy-home-assistant`).
-4. Sélectionne le type **Intégration**, puis valide.
-5. Télécharge **Econergy Cloud** et redémarre Home Assistant.
+1. Ouvre **HACS** depuis la barre latérale de Home Assistant.
+2. Dans la recherche, saisis **Econergy Cloud**.
+3. Sélectionne l'intégration **Econergy Cloud** dans les résultats.
+4. Ouvre sa fiche, puis clique sur **Télécharger** et confirme la version proposée.
+5. Redémarre Home Assistant pour charger l'intégration.
 6. Va dans **Paramètres → Appareils et services → Ajouter une intégration**, puis recherche **Econergy Cloud**.
 7. Termine l'autorisation Econergy dans la fenêtre OAuth. L'application demande `readonly`, `write` et `multihome`. Econergy confirme que `multihome` n'a aucun effet négatif pour un compte avec un seul domicile. Pour plusieurs domiciles, sélectionne ceux que tu souhaites autoriser sur la page de consentement Econergy ; dans Home Assistant, crée une entrée distincte pour chaque domicile à piloter.
 
-Après une mise à jour HACS, redémarre Home Assistant si nécessaire. Ne supprime pas l'entrée d'intégration lors d'une mise à jour : elle contient l'autorisation OAuth.
+Ne supprime pas l'entrée d'intégration lors d'une mise à jour : elle contient l'autorisation OAuth.
 
-## Installation manuelle
+### Dépôt personnalisé (solution de secours)
+
+Si Econergy Cloud n'apparaît pas encore dans la recherche HACS, tu peux ajouter le dépôt manuellement :
+
+1. Ouvre **HACS**, puis son menu **⋮** en haut à droite.
+2. Choisis **Dépôts personnalisés**.
+3. Saisis `https://github.com/econergy-app/econergy-home-assistant`.
+4. Sélectionne le type **Intégration**, puis ajoute le dépôt.
+5. Recherche ensuite **Econergy Cloud** dans HACS, ouvre sa fiche et télécharge l'intégration.
+
+## Installation manuelle (solution de secours)
 
 1. Télécharge le dépôt et décompresse-le.
 2. Copie `custom_components/econergy` vers `/config/custom_components/econergy`.
