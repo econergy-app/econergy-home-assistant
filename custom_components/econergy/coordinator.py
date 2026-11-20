@@ -5,9 +5,9 @@ import asyncio
 import hashlib
 import logging
 from collections.abc import Callable
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone, tzinfo
 from typing import Any
-from zoneinfo import ZoneInfo
+from homeassistant.util import dt as dt_util
 
 from homeassistant.components import persistent_notification
 from homeassistant.components.recorder.models import (
@@ -70,6 +70,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.consumption: dict[str, dict[str, Any]] = {}
         self.consumption_errors: dict[str, str] = {}
         self.consumption_loaded_date: str | None = None
+        self.consumption_loaded_devices: set[str] = set()
+        self.paris_tz: tzinfo | None = None
         self._consumption_store = Store(
             hass, 1, f"{DOMAIN}_{entry.entry_id}_consumption_history"
         )
@@ -300,6 +302,8 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             else:
                 self.consumption[new_id] = old_history
+        # A re-paired radiator has a new API identity: reload its report once.
+        self.consumption_loaded_devices.discard(old_id)
 
         self._schedule_consumption_save()
         self._last_commands_store.async_delay_save(lambda: dict(self.last_commands), 1)
@@ -490,6 +494,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_initialize(self) -> None:
         """Fetch the device inventory only; defer status commands and programs."""
+        self.paris_tz = await dt_util.async_get_time_zone("Europe/Paris")
+        if self.paris_tz is None:
+            raise RuntimeError("Impossible de charger le fuseau horaire Europe/Paris")
         devices = await self.api.get_devices(self.home_id)
         self._initial_devices = [dict(device) for device in devices]
         saved_firmware_versions = await self._firmware_store.async_load()
@@ -520,6 +527,13 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             loaded_date = saved_consumption.get("loaded_date")
             if isinstance(loaded_date, str):
                 self.consumption_loaded_date = loaded_date
+            loaded_devices = saved_consumption.get("loaded_devices")
+            if isinstance(loaded_devices, list):
+                self.consumption_loaded_devices = {
+                    str(device_id) for device_id in loaded_devices if device_id
+                }
+
+        self.consumption_loaded_devices.intersection_update(known_ids)
 
         saved_commands = await self._last_commands_store.async_load()
         if isinstance(saved_commands, dict):
@@ -643,6 +657,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lambda: {
                 "devices": dict(self.consumption),
                 "loaded_date": self.consumption_loaded_date,
+                "loaded_devices": sorted(self.consumption_loaded_devices),
             },
             1,
         )
@@ -743,7 +758,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         duration_points: list[StatisticData] = []
         energy_sum = 0.0
         duration_sum = 0.0
-        paris_tz = ZoneInfo("Europe/Paris")
+        if self.paris_tz is None:
+            raise RuntimeError("Le fuseau horaire Econergy n'est pas initialisé")
+        paris_tz = self.paris_tz
 
         for day in sorted(
             days,
@@ -908,16 +925,14 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._auto_status_devices_in_flight.clear()
 
     async def _async_automatic_status_refresh(self) -> None:
-        """Dispatch one wave every five minutes, spacing individual POSTs by five seconds."""
+        """Run a wave, wait for all confirmations, then pause five minutes."""
         await asyncio.sleep(10)
-        loop = asyncio.get_running_loop()
         while not self.hass.is_stopping and self.force_status_refresh_enabled:
-            cycle_started = loop.time()
             devices = [
                 item for item in ((self.data or {}).get("devices") or [])
                 if item.get("id")
             ]
-            dispatched = 0
+            wave_tasks: list[asyncio.Task] = []
 
             for device in devices:
                 if self.hass.is_stopping or not self.force_status_refresh_enabled:
@@ -939,7 +954,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 if device_id in self._auto_status_devices_in_flight:
                     continue
-                if dispatched:
+                if wave_tasks:
                     await asyncio.sleep(STATUS_REQUEST_SPACING_SECONDS)
                 if self.hass.is_stopping or not self.force_status_refresh_enabled:
                     break
@@ -955,15 +970,18 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         current_id, done_task
                     )
                 )
-                dispatched += 1
+                wave_tasks.append(request_task)
 
-            elapsed = loop.time() - cycle_started
-            await asyncio.sleep(max(1.0, STATUS_REFRESH_CYCLE_SECONDS - elapsed))
+            # Do not start another wave while a command or its state check remains pending.
+            if wave_tasks:
+                await asyncio.gather(*wave_tasks, return_exceptions=True)
+            if not self.hass.is_stopping and self.force_status_refresh_enabled:
+                await asyncio.sleep(STATUS_REFRESH_CYCLE_SECONDS)
 
     async def _async_automatic_status_request(self, device_id: str) -> None:
         """Run one automatic request without blocking the next radiator in the wave."""
         try:
-            result = await self.async_request_device_status(device_id)
+            result = await self.async_request_device_status(device_id, automatic=True)
             if result.get("fresh"):
                 _LOGGER.debug(
                     "Actualisation automatique Econergy confirmée pour %s (updatedAt=%s)",
@@ -971,7 +989,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     result.get("state_updated_at"),
                 )
             elif result.get("status") not in {"RATE_LIMIT_COOLDOWN", "NOT_REQUESTED"}:
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Actualisation automatique Econergy non confirmée pour %s (statut=%s, erreur=%s)",
                     self.device_log_label(device_id),
                     result.get("status"),
@@ -1054,7 +1072,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return merged
 
     async def _request_and_confirm_device_status(
-        self, device: dict[str, Any]
+        self, device: dict[str, Any], *, automatic: bool = False
     ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         """Request a fresh report and check command/state at about two and ten seconds."""
         device_id = str(device.get("id") or "")
@@ -1242,10 +1260,16 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "command_status": command_status,
             "state_updated_at": ((latest_device or {}).get("state") or {}).get("updatedAt"),
         })
-        _LOGGER.warning(
-            "La température Econergy de %s n'a pas été confirmée fraîche après la demande (commande=%s, updatedAt=%s)",
-            device_label, command_id, result.get("state_updated_at"),
-        )
+        if automatic:
+            _LOGGER.debug(
+                "La température Econergy de %s n'a pas été confirmée fraîche après la demande (commande=%s, updatedAt=%s)",
+                device_label, command_id, result.get("state_updated_at"),
+            )
+        else:
+            _LOGGER.warning(
+                "La température Econergy de %s n'a pas été confirmée fraîche après la demande (commande=%s, updatedAt=%s)",
+                device_label, command_id, result.get("state_updated_at"),
+            )
         return latest_device, result
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -1419,8 +1443,17 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # The consumption endpoint changes at most once per day. Read it after
         # the Europe/Paris date changes, in the background, without delaying
         # climate state updates.
-        today = datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
-        if self.consumption_loaded_date != today and (
+        if self.paris_tz is None:
+            raise UpdateFailed("Fuseau horaire Europe/Paris non initialisé")
+        today = datetime.now(self.paris_tz).date().isoformat()
+        current_consumption_device_ids = {
+            str(device.get("id"))
+            for device in refreshed_devices
+            if device.get("id")
+        }
+        if self.consumption_loaded_date != today:
+            self.consumption_loaded_devices.clear()
+        if not current_consumption_device_ids.issubset(self.consumption_loaded_devices) and (
             self._consumption_load_task is None or self._consumption_load_task.done()
         ):
             self._consumption_load_task = self.hass.async_create_background_task(
@@ -1495,16 +1528,28 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             })
 
     async def async_load_consumption(self, *, force: bool = False) -> None:
-        """Load the rolling API window, merge it into the permanent archive and Recorder."""
+        """Load daily data and retry only radiators not yet loaded successfully."""
         async with self._consumption_lock:
-            today = datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
-            if not force and self.consumption_loaded_date == today:
-                return
+            if self.paris_tz is None:
+                raise RuntimeError("Le fuseau horaire Econergy n'est pas initialisé")
+            today = datetime.now(self.paris_tz).date().isoformat()
+            if self.consumption_loaded_date != today:
+                self.consumption_loaded_devices.clear()
 
             devices = (self.data or {}).get("devices", [])
+            current_device_ids = {
+                str(device.get("id"))
+                for device in devices
+                if device.get("id")
+            }
+            if not force and current_device_ids.issubset(self.consumption_loaded_devices):
+                return
+
             for index, device in enumerate(devices):
                 device_id = str(device.get("id") or "")
-                if not device_id:
+                if not device_id or (
+                    not force and device_id in self.consumption_loaded_devices
+                ):
                     continue
                 try:
                     incoming = await self.api.get_consumption(device_id)
@@ -1519,6 +1564,7 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         str(device.get("name") or device_id),
                         merged.get("days") or [],
                     )
+                    self.consumption_loaded_devices.add(device_id)
                 except EconergyAuthError:
                     raise
                 except EconergyApiError as err:
@@ -1527,11 +1573,9 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if index < len(devices) - 1:
                     await asyncio.sleep(0.25)
 
-            # The endpoint is refreshed once per local day. Keep this
-            # cadence even when one device fails; errors remain visible and
-            # a manual refresh can retry that radiator without hammering the API.
+            # Keep successful devices marked for today and retry only failures
+            # on the next inventory refresh. Null values from the API stay null.
             self.consumption_loaded_date = today
-
             self._schedule_consumption_save()
             if self.data is not None:
                 self.async_set_updated_data({
@@ -1549,6 +1593,13 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             incoming,
         )
         self.consumption[str(device_id)] = merged
+        if self.paris_tz is None:
+            raise RuntimeError("Le fuseau horaire Econergy n'est pas initialisé")
+        today = datetime.now(self.paris_tz).date().isoformat()
+        if self.consumption_loaded_date != today:
+            self.consumption_loaded_devices.clear()
+        self.consumption_loaded_date = today
+        self.consumption_loaded_devices.add(str(device_id))
         self.consumption_errors.pop(str(device_id), None)
         device = self.find_device(str(device_id)) or {}
         self._import_consumption_statistics(
@@ -1870,8 +1921,10 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Retrieve a fresh, temporary PDF URL for the requested radiator."""
         return await self.api.get_manual(device_id, lang)
 
-    async def async_request_device_status(self, device_id: str) -> dict[str, Any]:
-        """Send an independent radio request after per-device cooldowns have elapsed."""
+    async def async_request_device_status(
+        self, device_id: str, *, automatic: bool = False
+    ) -> dict[str, Any]:
+        """Send a radio request after per-device cooldowns have elapsed."""
         device_id = str(device_id)
         if self.find_device(device_id) is None:
             raise ValueError("Radiateur Econergy introuvable.")
@@ -1891,15 +1944,19 @@ class EconergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if wait_for <= 0:
                     break
                 await asyncio.sleep(wait_for)
-            return await self._async_request_device_status(device_id)
+            return await self._async_request_device_status(device_id, automatic=automatic)
 
-    async def _async_request_device_status(self, device_id: str) -> dict[str, Any]:
+    async def _async_request_device_status(
+        self, device_id: str, *, automatic: bool = False
+    ) -> dict[str, Any]:
         """Execute and publish the result of the single shared status request."""
         device = self.find_device(device_id)
         if device is None:
             raise ValueError("Radiateur Econergy introuvable.")
 
-        latest, status = await self._request_and_confirm_device_status(device)
+        latest, status = await self._request_and_confirm_device_status(
+            device, automatic=automatic
+        )
         if latest:
             self._check_firmware_updates([latest])
         refreshed = self._merge_status(device, latest) if latest else dict(device)

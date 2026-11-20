@@ -138,12 +138,12 @@ class EconergyForcedTemperatureRefreshSwitch(CoordinatorEntity, SwitchEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "portee": "Tous les radiateurs de ce domicile",
-            "frequence": "5 minutes par radiateur",
+            "frequence": "5 minutes après la fin de chaque vague",
             "espacement": "5 secondes entre les demandes",
             "verification": "2 puis 10 secondes",
             "description": (
-                "Option temporaire : force le réveil radio des radiateurs tant que "
-                "les firmwares ne publient pas spontanément leurs températures."
+                "Déclenche le réveil radio automatique de tous les radiateurs du domicile. "
+                "La vague suivante démarre après la fin des vérifications, puis cinq minutes d'attente."
             ),
         }
 

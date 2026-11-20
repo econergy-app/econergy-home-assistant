@@ -3,7 +3,7 @@
 from typing import Any
 
 DOMAIN = "econergy"
-NAME = "Econergy Cloud 2.1.14"
+NAME = "Econergy Cloud 2.1.15"
 CONF_FORCE_STATUS_REFRESH = "force_status_refresh"
 
 
