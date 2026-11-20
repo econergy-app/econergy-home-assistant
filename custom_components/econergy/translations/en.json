@@ -35,7 +35,7 @@
   "entity": {
     "switch": {
       "force_status_refresh": {
-        "name": "Force radiator temperature refresh (temporary debug mode)"
+        "name": "Force temperature refresh"
       }
     }
   }

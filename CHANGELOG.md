@@ -1,3 +1,26 @@
+# Econergy Cloud 2.1.15
+
+## Revue HACS et compatibilité Home Assistant
+- Charge le fuseau horaire `Europe/Paris` une seule fois pendant l'initialisation, hors de la boucle événementielle. Les statistiques journalières et les dates de consommation réutilisent ensuite cet objet.
+- Conserve les workflows de validation HACS et Hassfest requis pour le catalogue officiel.
+
+## Actualisation des températures
+- Corrige le cycle d'actualisation forcée : la vague suivante ne démarre qu'après la fin de toutes les demandes et de leurs vérifications, puis cinq minutes d'attente.
+- Conserve cinq secondes entre les demandes d'une même vague, le filtre `state.updatedAt`, la limite d'une demande par radiateur et par minute et le respect des réponses HTTP 429 / `Retry-After`.
+- Les retards de confirmation des demandes automatiques sont désormais consignés en `DEBUG`, sans remplir le journal Home Assistant d'avertissements transitoires. Les erreurs effectives de l'API et les échecs de commandes restent signalés.
+- Clarifie le libellé du commutateur de diagnostic : « Actualisation forcée des températures ».
+
+## Consommation journalière
+- Suit les radiateurs chargés individuellement pour chaque journée ; un échec sur un appareil ne bloque plus les tentatives ultérieures pour ce seul radiateur.
+- Persiste la liste des appareils chargés afin de reprendre correctement après un redémarrage.
+- Conserve les valeurs absentes (`null`) renvoyées par Econergy sans les transformer en consommations nulles.
+
+## Compatibilité
+- Version stable, sans suffixe bêta.
+- Préserve les identifiants d'entités, les réglages, les programmes, l'archivage long terme et les notifications de mise à jour du firmware.
+
+---
+
 # Econergy Cloud 2.1.14
 
 ## Actualisation des températures

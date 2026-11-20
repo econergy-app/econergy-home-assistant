@@ -35,7 +35,7 @@
   "entity": {
     "switch": {
       "force_status_refresh": {
-        "name": "Forcer l’actualisation des températures (mode debug temporaire)"
+        "name": "Actualisation forcée des températures"
       }
     }
   }
